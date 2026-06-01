@@ -1,0 +1,390 @@
+import { create } from 'zustand';
+import type {
+  CanvasElement,
+  EditorDocument,
+  EditorSettings,
+  Layer,
+  SavedProject,
+  Tool,
+} from '../types/editor';
+import { saveProject } from '../db/indexedDb';
+
+const settingsKey = 'mind-paint-settings';
+const lastProjectKey = 'mind-paint-last-project-id';
+const defaultLayerId = 'layer-base';
+
+const defaultSettings: EditorSettings = {
+  tool: 'select',
+  strokeColor: '#17202a',
+  fillColor: '#f4b860',
+  brushSize: 6,
+  showGrid: true,
+  snapToGrid: false,
+  gridSize: 24,
+  fontSize: 24,
+  fontFamily: 'Inter, sans-serif',
+  bold: false,
+  italic: false,
+  textAlign: 'left',
+  rightClickEraser: true,
+  shortcuts: {
+    v: 'select',
+    p: 'pen',
+    e: 'eraser',
+    r: 'rectangle',
+    c: 'circle',
+    t: 'text',
+    f: 'fill',
+    a: 'arrow',
+    s: 'sticky',
+  },
+};
+
+function loadSettings(): EditorSettings {
+  try {
+    const raw = localStorage.getItem(settingsKey);
+    return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
+  } catch {
+    return defaultSettings;
+  }
+}
+
+function createDocument(): EditorDocument {
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    name: 'Untitled mind board',
+    width: 1600,
+    height: 1000,
+    layers: [{ id: defaultLayerId, name: 'Layer 1', visible: true, locked: false }],
+    elements: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+type Snapshot = Pick<EditorDocument, 'layers' | 'elements'>;
+type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
+
+interface EditorStore extends EditorDocument, EditorSettings {
+  activeLayerId: string;
+  selectedElementId: string | null;
+  selectedElementIds: string[];
+  history: Snapshot[];
+  future: Snapshot[];
+  isSaving: boolean;
+  saveStatus: SaveStatus;
+  setTool: (tool: Tool) => void;
+  setStrokeColor: (color: string) => void;
+  setFillColor: (color: string) => void;
+  setBrushSize: (size: number) => void;
+  setShowGrid: (show: boolean) => void;
+  setSnapToGrid: (snap: boolean) => void;
+  setGridSize: (size: number) => void;
+  setFontSize: (size: number) => void;
+  setFontFamily: (family: string) => void;
+  setBold: (bold: boolean) => void;
+  setItalic: (italic: boolean) => void;
+  setTextAlign: (align: EditorSettings['textAlign']) => void;
+  setRightClickEraser: (enabled: boolean) => void;
+  setShortcut: (tool: Tool, key: string) => void;
+  setName: (name: string) => void;
+  setSelectedElementId: (id: string | null) => void;
+  setSelectedElementIds: (ids: string[]) => void;
+  toggleSelectedElementId: (id: string) => void;
+  addElement: (element: CanvasElement) => void;
+  updateElement: (id: string, patch: Partial<CanvasElement>, trackHistory?: boolean) => void;
+  deleteElement: (id: string) => void;
+  addLayer: () => void;
+  renameLayer: (id: string, name: string) => void;
+  deleteLayer: (id: string) => void;
+  toggleLayerVisibility: (id: string) => void;
+  toggleLayerLock: (id: string) => void;
+  moveLayer: (id: string, direction: 'up' | 'down') => void;
+  setActiveLayerId: (id: string) => void;
+  undo: () => void;
+  redo: () => void;
+  newProject: () => void;
+  loadProject: (project: SavedProject) => void;
+  saveCurrentProject: () => Promise<void>;
+  toProject: () => SavedProject;
+}
+
+function persistSettings(settings: EditorSettings) {
+  localStorage.setItem(settingsKey, JSON.stringify(settings));
+}
+
+function pickSettings(state: EditorSettings): EditorSettings {
+  return {
+    tool: state.tool,
+    strokeColor: state.strokeColor,
+    fillColor: state.fillColor,
+    brushSize: state.brushSize,
+    showGrid: state.showGrid,
+    snapToGrid: state.snapToGrid,
+    gridSize: state.gridSize,
+    fontSize: state.fontSize,
+    fontFamily: state.fontFamily,
+    bold: state.bold,
+    italic: state.italic,
+    textAlign: state.textAlign,
+    rightClickEraser: state.rightClickEraser,
+    shortcuts: state.shortcuts,
+  };
+}
+
+function snapshot(state: Pick<EditorStore, 'layers' | 'elements'>): Snapshot {
+  return {
+    layers: structuredClone(state.layers),
+    elements: structuredClone(state.elements),
+  };
+}
+
+function snapshotsEqual(a: Snapshot, b: Snapshot) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function withHistory(state: EditorStore) {
+  const current = snapshot(state);
+  const previous = state.history.at(-1);
+  const history = previous && snapshotsEqual(previous, current) ? state.history : [...state.history.slice(-39), current];
+  return {
+    history,
+    future: [],
+    updatedAt: Date.now(),
+    saveStatus: 'dirty' as SaveStatus,
+  };
+}
+
+const initialDocument = createDocument();
+
+export const useEditorStore = create<EditorStore>((set, get) => ({
+  ...initialDocument,
+  ...loadSettings(),
+  activeLayerId: defaultLayerId,
+  selectedElementId: null,
+  selectedElementIds: [],
+  history: [],
+  future: [],
+  isSaving: false,
+  saveStatus: 'dirty',
+
+  setTool: (tool) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), tool });
+      return { tool };
+    }),
+  setStrokeColor: (strokeColor) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), strokeColor });
+      return { strokeColor };
+    }),
+  setFillColor: (fillColor) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), fillColor });
+      return { fillColor };
+    }),
+  setBrushSize: (brushSize) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), brushSize });
+      return { brushSize };
+    }),
+  setShowGrid: (showGrid) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), showGrid });
+      return { showGrid };
+    }),
+  setSnapToGrid: (snapToGrid) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), snapToGrid });
+      return { snapToGrid };
+    }),
+  setGridSize: (gridSize) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), gridSize });
+      return { gridSize };
+    }),
+  setFontSize: (fontSize) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), fontSize });
+      return { fontSize };
+    }),
+  setFontFamily: (fontFamily) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), fontFamily });
+      return { fontFamily };
+    }),
+  setBold: (bold) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), bold });
+      return { bold };
+    }),
+  setItalic: (italic) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), italic });
+      return { italic };
+    }),
+  setTextAlign: (textAlign) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), textAlign });
+      return { textAlign };
+    }),
+  setRightClickEraser: (rightClickEraser) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), rightClickEraser });
+      return { rightClickEraser };
+    }),
+  setShortcut: (tool, key) =>
+    set((state) => {
+      const normalized = key.trim().toLowerCase();
+      const shortcuts = Object.fromEntries(
+        Object.entries(state.shortcuts).filter(([, mappedTool]) => mappedTool !== tool),
+      );
+      if (normalized) shortcuts[normalized] = tool;
+      const settings = { ...pickSettings(state), shortcuts };
+      persistSettings(settings);
+      return { shortcuts };
+    }),
+  setName: (name) => set({ name, updatedAt: Date.now(), saveStatus: 'dirty' }),
+  setSelectedElementId: (selectedElementId) => set({ selectedElementId, selectedElementIds: selectedElementId ? [selectedElementId] : [] }),
+  setSelectedElementIds: (selectedElementIds) =>
+    set({ selectedElementIds, selectedElementId: selectedElementIds[0] ?? null }),
+  toggleSelectedElementId: (id) =>
+    set((state) => {
+      const selectedElementIds = state.selectedElementIds.includes(id)
+        ? state.selectedElementIds.filter((selectedId) => selectedId !== id)
+        : [...state.selectedElementIds, id];
+      return { selectedElementIds, selectedElementId: selectedElementIds[0] ?? null };
+    }),
+
+  addElement: (element) => set((state) => ({ ...withHistory(state), elements: [...state.elements, element] })),
+  updateElement: (id, patch, trackHistory = true) =>
+    set((state) => ({
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
+      elements: state.elements.map((element) =>
+        element.id === id ? ({ ...element, ...patch } as CanvasElement) : element,
+      ),
+    })),
+  deleteElement: (id) =>
+    set((state) => ({
+      ...withHistory(state),
+      elements: state.elements.filter((element) => element.id !== id),
+      selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+      selectedElementIds: state.selectedElementIds.filter((selectedId) => selectedId !== id),
+    })),
+
+  addLayer: () =>
+    set((state) => {
+      const layer: Layer = {
+        id: crypto.randomUUID(),
+        name: `Layer ${state.layers.length + 1}`,
+        visible: true,
+        locked: false,
+      };
+      return { ...withHistory(state), layers: [...state.layers, layer], activeLayerId: layer.id };
+    }),
+  renameLayer: (id, name) =>
+    set((state) => ({ ...withHistory(state), layers: state.layers.map((layer) => (layer.id === id ? { ...layer, name } : layer)) })),
+  deleteLayer: (id) =>
+    set((state) => {
+      if (state.layers.length === 1) return {};
+      const layers = state.layers.filter((layer) => layer.id !== id);
+      return {
+        ...withHistory(state),
+        layers,
+        elements: state.elements.filter((element) => element.layerId !== id),
+        activeLayerId: state.activeLayerId === id ? layers[0].id : state.activeLayerId,
+        selectedElementId: null,
+        selectedElementIds: [],
+      };
+    }),
+  toggleLayerVisibility: (id) =>
+    set((state) => ({ ...withHistory(state), layers: state.layers.map((layer) => (layer.id === id ? { ...layer, visible: !layer.visible } : layer)) })),
+  toggleLayerLock: (id) =>
+    set((state) => ({ ...withHistory(state), layers: state.layers.map((layer) => (layer.id === id ? { ...layer, locked: !layer.locked } : layer)) })),
+  moveLayer: (id, direction) =>
+    set((state) => {
+      const index = state.layers.findIndex((layer) => layer.id === id);
+      const target = direction === 'up' ? index + 1 : index - 1;
+      if (index < 0 || target < 0 || target >= state.layers.length) return {};
+      const layers = [...state.layers];
+      [layers[index], layers[target]] = [layers[target], layers[index]];
+      return { ...withHistory(state), layers };
+    }),
+  setActiveLayerId: (activeLayerId) => set({ activeLayerId }),
+
+  undo: () =>
+    set((state) => {
+      const previous = state.history.at(-1);
+      if (!previous) return {};
+      return {
+        layers: previous.layers,
+        elements: previous.elements,
+        history: state.history.slice(0, -1),
+        future: [snapshot(state), ...state.future],
+        selectedElementId: null,
+        selectedElementIds: [],
+        saveStatus: 'dirty',
+        updatedAt: Date.now(),
+      };
+    }),
+  redo: () =>
+    set((state) => {
+      const next = state.future[0];
+      if (!next) return {};
+      return {
+        layers: next.layers,
+        elements: next.elements,
+        history: [...state.history, snapshot(state)],
+        future: state.future.slice(1),
+        selectedElementId: null,
+        selectedElementIds: [],
+        saveStatus: 'dirty',
+        updatedAt: Date.now(),
+      };
+    }),
+  newProject: () => {
+    const doc = createDocument();
+    localStorage.setItem(lastProjectKey, doc.id);
+    set({ ...doc, activeLayerId: doc.layers[0].id, selectedElementId: null, selectedElementIds: [], history: [], future: [], saveStatus: 'dirty' });
+  },
+  loadProject: (project) =>
+    set(() => {
+      localStorage.setItem(lastProjectKey, project.id);
+      return {
+      ...project,
+      activeLayerId: project.layers[0]?.id ?? defaultLayerId,
+      selectedElementId: null,
+      selectedElementIds: [],
+      history: [],
+      future: [],
+      saveStatus: 'saved',
+    };
+    }),
+  toProject: () => {
+    const state = get();
+    return {
+      id: state.id,
+      name: state.name,
+      width: state.width,
+      height: state.height,
+      layers: state.layers,
+      elements: state.elements,
+      createdAt: state.createdAt,
+      updatedAt: Date.now(),
+    };
+  },
+  saveCurrentProject: async () => {
+    set({ isSaving: true, saveStatus: 'saving' });
+    try {
+      await saveProject(get().toProject());
+      localStorage.setItem(lastProjectKey, get().id);
+      set({ isSaving: false, saveStatus: 'saved' });
+    } catch (error) {
+      set({ isSaving: false, saveStatus: 'error' });
+      throw error;
+    }
+  },
+}));
+
+export { lastProjectKey };
