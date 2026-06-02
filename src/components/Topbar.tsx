@@ -1,5 +1,5 @@
 import type Konva from 'konva';
-import { Download, FileDown, FileImage, FileText, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Undo2 } from 'lucide-react';
+import { Download, FileDown, FileImage, FileText, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useRef, type RefObject } from 'react';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
@@ -61,6 +61,14 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   function exportPdf() {
     const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
     if (dataUrl) downloadPdfFromDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}.pdf`);
+  }
+
+  function clearCanvas() {
+    const firstConfirm = window.confirm('Clear everything on the current canvas?');
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm('This will remove all elements and reset the page. Continue?');
+    if (!secondConfirm) return;
+    state.clearCanvas();
   }
 
   return (
@@ -140,6 +148,9 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
       </button>
       <button className="icon-button" title="Save" aria-label="Save" onClick={state.saveCurrentProject}>
         <Save size={17} />
+      </button>
+      <button className="icon-button" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
+        <Trash2 size={17} />
       </button>
       <button className="icon-button" title="Export PNG @3x" aria-label="Export PNG" onClick={() => exportImage('image/png')}>
         <Download size={17} />

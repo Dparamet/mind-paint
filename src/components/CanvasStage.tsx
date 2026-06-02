@@ -27,6 +27,10 @@ function ImageNode({ element, selectable }: { element: ImageElement; selectable:
   return <KonvaImage image={image ?? undefined} {...element} draggable={selectable} />;
 }
 
+function isMouseEvent(event: MouseEvent | TouchEvent): event is MouseEvent {
+  return 'button' in event;
+}
+
 export function CanvasStage({ stageRef }: CanvasStageProps) {
   const {
     width,
@@ -55,11 +59,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     addElement,
     updateElement,
     deleteElement,
+    deleteSelectedElements,
   } = useEditorStore();
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
   const drawingId = useRef<string | null>(null);
   const rightEraseId = useRef<string | null>(null);
+  const middlePanStart = useRef<{ pointer: { x: number; y: number }; stage: { x: number; y: number } } | null>(null);
   const [scale, setScale] = useState(1);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [stageSize, setStageSize] = useState({ width: 1200, height: 800 });
@@ -193,9 +199,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
-    const isMiddleMouse = 'button' in event.evt && event.evt.button === 1;
-    if (isMiddleMouse) {
+    if (isMouseEvent(event.evt) && event.evt.button === 1) {
+      const mouseEvent = event.evt;
       event.evt.preventDefault();
+      middlePanStart.current = {
+        pointer: { x: mouseEvent.clientX, y: mouseEvent.clientY },
+        stage: stagePosition,
+      };
       setIsMiddlePanning(true);
       return;
     }
@@ -382,7 +392,18 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
   }
 
-  function handleMouseMove() {
+  function handleMouseMove(event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    if ('clientX' in event.evt) {
+      const start = middlePanStart.current;
+      if (start) {
+        setStagePosition({
+          x: start.stage.x + event.evt.clientX - start.pointer.x,
+          y: start.stage.y + event.evt.clientY - start.pointer.y,
+        });
+        return;
+      }
+    }
+
     const id = drawingId.current;
     const point = getPointer();
     if (!id || !point) return;
@@ -407,6 +428,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   function handleMouseUp() {
     drawingId.current = null;
     rightEraseId.current = null;
+    middlePanStart.current = null;
     setIsMiddlePanning(false);
   }
 
@@ -543,6 +565,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         if (tool === 'select') setSelectedElementId(element.id);
         if (tool === 'fill') applyFill(element.id);
       },
+      onDragStart: (event: Konva.KonvaEventObject<DragEvent>) => {
+        if (!event.evt.altKey || tool !== 'select') return;
+        const copy = {
+          ...structuredClone(element),
+          id: crypto.randomUUID(),
+          x: element.x + 24,
+          y: element.y + 24,
+        } as CanvasElement;
+        addElement(copy);
+        setSelectedElementId(copy.id);
+      },
       onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
         updateElement(element.id, { x: snapValue(event.target.x()), y: snapValue(event.target.y()) });
       },
@@ -612,8 +645,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         x={stagePosition.x}
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
-        draggable={isSpacePressed || isMiddlePanning}
-        className={showGrid ? 'bg-[radial-gradient(circle,#ded7ca_1px,transparent_1px)] [background-size:24px_24px]' : 'bg-paper'}
+        draggable={isSpacePressed}
+        className={`${showGrid ? 'bg-[radial-gradient(circle,#ded7ca_1px,transparent_1px)] [background-size:24px_24px]' : 'bg-paper'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -645,7 +678,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       {selectedElementId && (
         <button
           className="absolute bottom-4 left-4 rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
-          onClick={() => deleteElement(selectedElementId)}
+          onClick={() => {
+            if (selectedElementIds.length) {
+              deleteSelectedElements();
+              return;
+            }
+            deleteElement(selectedElementId);
+          }}
         >
           Delete selected
         </button>

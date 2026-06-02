@@ -95,6 +95,9 @@ interface EditorStore extends EditorDocument, EditorSettings {
   addElement: (element: CanvasElement) => void;
   updateElement: (id: string, patch: Partial<CanvasElement>, trackHistory?: boolean) => void;
   deleteElement: (id: string) => void;
+  deleteSelectedElements: () => void;
+  clearCanvas: () => void;
+  duplicateSelectedElements: () => void;
   addLayer: () => void;
   renameLayer: (id: string, name: string) => void;
   deleteLayer: (id: string) => void;
@@ -272,6 +275,45 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
       selectedElementIds: state.selectedElementIds.filter((selectedId) => selectedId !== id),
     })),
+  deleteSelectedElements: () =>
+    set((state) => {
+      if (!state.selectedElementIds.length) return {};
+      const selected = new Set(state.selectedElementIds);
+      return {
+        ...withHistory(state),
+        elements: state.elements.filter((element) => !selected.has(element.id)),
+        selectedElementId: null,
+        selectedElementIds: [],
+      };
+    }),
+  clearCanvas: () =>
+    set((state) => ({
+      ...withHistory(state),
+      layers: [{ id: defaultLayerId, name: 'Layer 1', visible: true, locked: false }],
+      elements: [],
+      activeLayerId: defaultLayerId,
+      selectedElementId: null,
+      selectedElementIds: [],
+    })),
+  duplicateSelectedElements: () =>
+    set((state) => {
+      if (!state.selectedElementIds.length) return {};
+      const selected = new Set(state.selectedElementIds);
+      const copies = state.elements
+        .filter((element) => selected.has(element.id))
+        .map((element) => ({
+          ...structuredClone(element),
+          id: crypto.randomUUID(),
+          x: element.x + 32,
+          y: element.y + 32,
+        }) as CanvasElement);
+      return {
+        ...withHistory(state),
+        elements: [...state.elements, ...copies],
+        selectedElementId: copies[0]?.id ?? null,
+        selectedElementIds: copies.map((copy) => copy.id),
+      };
+    }),
 
   addLayer: () =>
     set((state) => {

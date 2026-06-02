@@ -8,6 +8,9 @@ import { Toolbar } from './components/Toolbar';
 import { Topbar } from './components/Topbar';
 import { getProject, listProjects } from './db/indexedDb';
 import { lastProjectKey, useEditorStore } from './store/useEditorStore';
+import type { CanvasElement } from './types/editor';
+
+let internalClipboard: CanvasElement[] = [];
 export default function App() {
   const stageRef = useRef<Konva.Stage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -17,6 +20,12 @@ export default function App() {
   const redo = useEditorStore((state) => state.redo);
   const saveCurrentProject = useEditorStore((state) => state.saveCurrentProject);
   const loadProject = useEditorStore((state) => state.loadProject);
+  const selectedElementIds = useEditorStore((state) => state.selectedElementIds);
+  const elements = useEditorStore((state) => state.elements);
+  const addElement = useEditorStore((state) => state.addElement);
+  const setSelectedElementIds = useEditorStore((state) => state.setSelectedElementIds);
+  const deleteSelectedElements = useEditorStore((state) => state.deleteSelectedElements);
+  const duplicateSelectedElements = useEditorStore((state) => state.duplicateSelectedElements);
   const autosaveKey = useEditorStore((state) => `${state.id}:${state.updatedAt}:${state.elements.length}:${state.layers.length}`);
   const saveStatus = useEditorStore((state) => state.saveStatus);
 
@@ -36,12 +45,39 @@ export default function App() {
         redo();
         return;
       }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        deleteSelectedElements();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateSelectedElements();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        internalClipboard = elements.filter((element) => selectedElementIds.includes(element.id)).map((element) => structuredClone(element));
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && internalClipboard.length) {
+        event.preventDefault();
+        const copies = internalClipboard.map((element) => ({
+          ...structuredClone(element),
+          id: crypto.randomUUID(),
+          x: element.x + 40,
+          y: element.y + 40,
+        }) as CanvasElement);
+        copies.forEach(addElement);
+        setSelectedElementIds(copies.map((copy) => copy.id));
+        internalClipboard = copies;
+        return;
+      }
       const tool = shortcuts[event.key.toLowerCase()];
       if (tool) setTool(tool);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [redo, setTool, undo]);
+  }, [addElement, deleteSelectedElements, duplicateSelectedElements, elements, redo, selectedElementIds, setSelectedElementIds, setTool, shortcuts, undo]);
 
   useEffect(() => {
     let cancelled = false;

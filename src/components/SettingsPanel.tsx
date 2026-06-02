@@ -40,6 +40,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </button>
       </div>
       <div className="space-y-4 p-4">
+        <div className="rounded-md border border-line bg-white p-3 text-xs leading-5 text-ink/70">
+          <div><strong>Space</strong> drag = pan canvas</div>
+          <div><strong>Alt + wheel</strong> = horizontal pan</div>
+          <div><strong>Alt + drag object</strong> = duplicate while moving</div>
+          <div><strong>Delete</strong> = remove selected</div>
+          <div><strong>Ctrl+C / Ctrl+V</strong> = copy / paste objects</div>
+          <div><strong>Ctrl+D</strong> = duplicate selected</div>
+        </div>
         <label className="flex items-center justify-between gap-3 text-sm">
           <span>Right click eraser</span>
           <input
