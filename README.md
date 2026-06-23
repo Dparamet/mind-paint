@@ -6,10 +6,11 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 
 - Drawing tools for pen, pencil, eraser, line, arrow, rectangle, circle, text, sticky note, mind node, and speech bubble.
 - Select, move, resize, rotate, duplicate, delete, undo, and redo.
+- **Color picker** — click Stroke/Fill swatch to open a popover with 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted in `localStorage`), and a custom native picker for arbitrary colors.
 - Layer management with visibility, lock, rename, reorder, and delete controls.
 - Project save/load/delete in IndexedDB.
 - Image import from file or clipboard.
-- Export to PNG, JPEG, SVG, PDF, and project JSON.
+- Export to PNG, JPEG, PDF, and project JSON.
 - Local editor settings persisted in `localStorage`.
 
 ## Run

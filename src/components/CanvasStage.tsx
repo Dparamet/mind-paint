@@ -73,7 +73,6 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
-  const selectedElement = elements.find((element) => element.id === selectedElementId);
   const canEditActiveLayer = Boolean(activeLayer && activeLayer.visible && !activeLayer.locked);
   const fontStyle = `${italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`;
 
@@ -133,7 +132,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  });
+  }, [canEditActiveLayer, activeLayerId]);
 
   async function insertImage(src: string, point: { x: number; y: number }) {
     const size = await dataUrlToImageSize(src);
@@ -624,8 +623,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         <input
           aria-label="Canvas zoom"
           type="range"
-          min="0.35"
-          max="1.25"
+          min="0.15"
+          max="4"
           step="0.05"
           value={scale}
           onChange={(event) => setScale(Number(event.target.value))}
