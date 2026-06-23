@@ -1,6 +1,7 @@
 import type Konva from 'konva';
 import { Download, FileDown, FileImage, FileText, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useRef, type RefObject } from 'react';
+import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, readJsonFile } from '../utils/exportUtils';
@@ -80,14 +81,8 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           value={state.name}
           onChange={(event) => state.setName(event.target.value)}
         />
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-          Stroke
-          <input aria-label="Stroke color" type="color" value={state.strokeColor} onChange={(event) => state.setStrokeColor(event.target.value)} />
-        </label>
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-          Fill
-          <input aria-label="Fill color" type="color" value={state.fillColor} onChange={(event) => state.setFillColor(event.target.value)} />
-        </label>
+        <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={state.setStrokeColor} />
+        <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={state.setFillColor} />
         <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
           Brush
           <input

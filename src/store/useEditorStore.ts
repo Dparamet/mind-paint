@@ -17,6 +17,7 @@ const defaultSettings: EditorSettings = {
   tool: 'select',
   strokeColor: '#17202a',
   fillColor: '#f4b860',
+  recentColors: [],
   brushSize: 6,
   showGrid: true,
   snapToGrid: false,
@@ -117,11 +118,17 @@ function persistSettings(settings: EditorSettings) {
   localStorage.setItem(settingsKey, JSON.stringify(settings));
 }
 
+// ponytail: dragging the native color input commits intermediate hexes here; dedupe + cap keeps it self-cleaning. Debounce on commit if it ever feels noisy.
+function pushRecent(list: string[], color: string) {
+  return [color, ...list.filter((existing) => existing.toLowerCase() !== color.toLowerCase())].slice(0, 12);
+}
+
 function pickSettings(state: EditorSettings): EditorSettings {
   return {
     tool: state.tool,
     strokeColor: state.strokeColor,
     fillColor: state.fillColor,
+    recentColors: state.recentColors,
     brushSize: state.brushSize,
     showGrid: state.showGrid,
     snapToGrid: state.snapToGrid,
@@ -179,13 +186,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }),
   setStrokeColor: (strokeColor) =>
     set((state) => {
-      persistSettings({ ...pickSettings(state), strokeColor });
-      return { strokeColor };
+      const recentColors = pushRecent(state.recentColors, strokeColor);
+      persistSettings({ ...pickSettings(state), strokeColor, recentColors });
+      return { strokeColor, recentColors };
     }),
   setFillColor: (fillColor) =>
     set((state) => {
-      persistSettings({ ...pickSettings(state), fillColor });
-      return { fillColor };
+      const recentColors = pushRecent(state.recentColors, fillColor);
+      persistSettings({ ...pickSettings(state), fillColor, recentColors });
+      return { fillColor, recentColors };
     }),
   setBrushSize: (brushSize) =>
     set((state) => {

@@ -137,6 +137,7 @@ export interface EditorSettings {
   tool: Tool;
   strokeColor: string;
   fillColor: string;
+  recentColors: string[];
   brushSize: number;
   showGrid: boolean;
   snapToGrid: boolean;
