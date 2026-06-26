@@ -5,6 +5,7 @@ import type {
   EditorSettings,
   Layer,
   SavedProject,
+  StrokeDash,
   Tool,
 } from '../types/editor';
 import { saveProject } from '../db/indexedDb';
@@ -28,6 +29,7 @@ const defaultSettings: EditorSettings = {
   italic: false,
   textAlign: 'left',
   rightClickEraser: true,
+  strokeDash: 'solid',
   shortcuts: {
     v: 'select',
     p: 'pen',
@@ -37,7 +39,6 @@ const defaultSettings: EditorSettings = {
     t: 'text',
     f: 'fill',
     a: 'arrow',
-    s: 'sticky',
   },
 };
 
@@ -88,17 +89,23 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setItalic: (italic: boolean) => void;
   setTextAlign: (align: EditorSettings['textAlign']) => void;
   setRightClickEraser: (enabled: boolean) => void;
+  setStrokeDash: (dash: StrokeDash) => void;
   setShortcut: (tool: Tool, key: string) => void;
   setName: (name: string) => void;
   setSelectedElementId: (id: string | null) => void;
   setSelectedElementIds: (ids: string[]) => void;
   toggleSelectedElementId: (id: string) => void;
   addElement: (element: CanvasElement) => void;
+  prependElement: (element: CanvasElement) => void;
   updateElement: (id: string, patch: Partial<CanvasElement>, trackHistory?: boolean) => void;
   deleteElement: (id: string) => void;
   deleteSelectedElements: () => void;
   clearCanvas: () => void;
   duplicateSelectedElements: () => void;
+  moveElementForward: (id: string) => void;
+  moveElementBackward: (id: string) => void;
+  moveElementToFront: (id: string) => void;
+  moveElementToBack: (id: string) => void;
   addLayer: () => void;
   renameLayer: (id: string, name: string) => void;
   deleteLayer: (id: string) => void;
@@ -139,6 +146,7 @@ function pickSettings(state: EditorSettings): EditorSettings {
     italic: state.italic,
     textAlign: state.textAlign,
     rightClickEraser: state.rightClickEraser,
+    strokeDash: state.strokeDash,
     shortcuts: state.shortcuts,
   };
 }
@@ -246,6 +254,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       persistSettings({ ...pickSettings(state), rightClickEraser });
       return { rightClickEraser };
     }),
+  setStrokeDash: (strokeDash) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), strokeDash });
+      return { strokeDash };
+    }),
   setShortcut: (tool, key) =>
     set((state) => {
       const normalized = key.trim().toLowerCase();
@@ -270,6 +283,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }),
 
   addElement: (element) => set((state) => ({ ...withHistory(state), elements: [...state.elements, element] })),
+  prependElement: (element) => set((state) => ({ ...withHistory(state), elements: [element, ...state.elements] })),
   updateElement: (id, patch, trackHistory = true) =>
     set((state) => ({
       ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
@@ -322,6 +336,34 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         selectedElementId: copies[0]?.id ?? null,
         selectedElementIds: copies.map((copy) => copy.id),
       };
+    }),
+  moveElementForward: (id) =>
+    set((state) => {
+      const idx = state.elements.findIndex((e) => e.id === id);
+      if (idx < 0 || idx >= state.elements.length - 1) return {};
+      const els = [...state.elements];
+      [els[idx], els[idx + 1]] = [els[idx + 1], els[idx]];
+      return { ...withHistory(state), elements: els };
+    }),
+  moveElementBackward: (id) =>
+    set((state) => {
+      const idx = state.elements.findIndex((e) => e.id === id);
+      if (idx <= 0) return {};
+      const els = [...state.elements];
+      [els[idx - 1], els[idx]] = [els[idx], els[idx - 1]];
+      return { ...withHistory(state), elements: els };
+    }),
+  moveElementToFront: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id);
+      if (!el) return {};
+      return { ...withHistory(state), elements: [...state.elements.filter((e) => e.id !== id), el] };
+    }),
+  moveElementToBack: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id);
+      if (!el) return {};
+      return { ...withHistory(state), elements: [el, ...state.elements.filter((e) => e.id !== id)] };
     }),
 
   addLayer: () =>

@@ -2,6 +2,7 @@ import type Konva from 'konva';
 import { useEffect, useRef, useState } from 'react';
 import { CanvasStage } from './components/CanvasStage';
 import { LayerPanel } from './components/LayerPanel';
+import { PropertiesPanel } from './components/PropertiesPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toolbar } from './components/Toolbar';
@@ -32,7 +33,11 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const isTyping = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+      // Only block shortcuts when user is typing text — not for range/checkbox/number/color inputs
+      const inputType = (target as HTMLInputElement | null)?.type ?? '';
+      const isTyping =
+        target?.tagName === 'TEXTAREA' ||
+        (target?.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'color', 'file'].includes(inputType));
       if (isTyping) return;
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
@@ -108,14 +113,15 @@ export default function App() {
         <CanvasStage stageRef={stageRef} />
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <div className="flex w-72 flex-col bg-panel">
+      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-line bg-panel">
+        <PropertiesPanel />
         <LayerPanel />
         <ProjectManager />
-        <div className="border-t border-line px-4 py-2 text-xs text-ink/60">
-          {saveStatus === 'saving' && 'Saving...'}
-          {saveStatus === 'saved' && 'Saved'}
-          {saveStatus === 'dirty' && 'Unsaved changes'}
-          {saveStatus === 'error' && 'Save failed'}
+        <div className="shrink-0 border-t border-line px-4 py-2 text-xs text-ink/60">
+          {saveStatus === 'saving' && <span className="text-accent">Saving…</span>}
+          {saveStatus === 'saved' && <span>Saved</span>}
+          {saveStatus === 'dirty' && <span className="text-coral">Unsaved changes</span>}
+          {saveStatus === 'error' && <span className="text-coral">Save failed</span>}
         </div>
       </div>
     </div>
