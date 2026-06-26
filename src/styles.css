@@ -36,3 +36,23 @@ select {
 .tool-button-active {
   @apply border-accent bg-accent text-white hover:bg-accent hover:text-white;
 }
+
+/* Thin scrollbars for panels */
+.overflow-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #ded7ca transparent;
+}
+.overflow-auto::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.overflow-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-auto::-webkit-scrollbar-thumb {
+  background: #ded7ca;
+  border-radius: 2px;
+}
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: #c9c0b5;
+}

@@ -20,6 +20,8 @@ export interface Point {
   y: number;
 }
 
+export type StrokeDash = 'solid' | 'dashed' | 'dotted';
+
 export interface BaseElement {
   id: string;
   layerId: string;
@@ -31,6 +33,7 @@ export interface BaseElement {
   stroke?: string;
   fill?: string;
   strokeWidth?: number;
+  dash?: number[];
 }
 
 export interface LineElement extends BaseElement {
@@ -149,4 +152,5 @@ export interface EditorSettings {
   textAlign: 'left' | 'center' | 'right';
   rightClickEraser: boolean;
   shortcuts: Record<string, Tool>;
+  strokeDash: StrokeDash;
 }

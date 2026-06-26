@@ -4,14 +4,81 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 
 ## Features
 
-- Drawing tools for pen, pencil, eraser, line, arrow, rectangle, circle, text, sticky note, mind node, and speech bubble.
-- Select, move, resize, rotate, duplicate, delete, undo, and redo.
-- **Color picker** — click Stroke/Fill swatch to open a popover with 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted in `localStorage`), and a custom native picker for arbitrary colors.
-- Layer management with visibility, lock, rename, reorder, and delete controls.
-- Project save/load/delete in IndexedDB.
-- Image import from file or clipboard.
-- Export to PNG, JPEG, PDF, and project JSON.
-- Local editor settings persisted in `localStorage`.
+### Drawing Tools
+| Tool | Shortcut | Notes |
+|------|----------|-------|
+| Select / Move | `V` | Click, Shift+click multi-select, drag marquee to box-select |
+| Pen | `P` | Smooth freehand stroke |
+| Pencil | — | Lighter freehand stroke |
+| Eraser | `E` | Deletes elements under cursor |
+| Fill bucket | `F` | Flood-fill on canvas pixels |
+| Rectangle | `R` | Drag any direction — no negative-size bug |
+| Circle / Ellipse | `C` | |
+| Line | — | |
+| Arrow | `A` | |
+| Text | `T` | Click to place; inline editor (Enter commit, Esc cancel) |
+| Sticky note | — | |
+| Mind node | — | |
+| Speech bubble | — | |
+
+### Canvas
+- **Infinite canvas** — pan with Space+drag or middle mouse, zoom with scroll wheel (15 %–400 %)
+- **Marquee select** — drag on empty canvas to box-select multiple elements
+- **Snap to grid** — optional 24 px grid with snap toggle
+- **Zoom slider** — top-left HUD with reset and fit-to-screen buttons
+- **Alt+drag** to duplicate any element in place
+- **Paste image** from clipboard
+
+### Styling
+- **Stroke & Fill** color pickers — live-apply to selected elements; 12 recent colors auto-tracked
+- **Opacity slider** — shown when element(s) selected (10 %–100 %)
+- **Stroke dash** — solid `—`, dashed `╌`, dotted `···` — applies to new and selected elements
+- **Brush size** slider (1–48)
+- **Text controls** — font family, size, bold, italic (context-aware, shown for text tool or selected text)
+
+### Selection & Transform
+- Multi-select with Shift+click or marquee drag
+- Resize + rotate via Konva Transformer handles
+- **Z-order** — Bring to Front / Forward / Backward / Send to Back (shown in toolbar when 1 element selected)
+- **Align & Distribute** — shown when ≥ 2 elements selected: align left / center / right / top / middle / bottom; distribute H/V (≥ 3 elements)
+- **Properties panel** — live X, Y, W, H, Rotation, Stroke-Width inputs in right sidebar when element selected
+
+### Layers
+- Add, rename, delete, reorder (up/down), toggle visibility, lock/unlock
+
+### Projects
+- Auto-save debounced 3 s to IndexedDB (Dexie.js)
+- Manual save `Ctrl+S` equivalent via Save button
+- Multiple projects with create / load / delete in Project Manager
+- Last session auto-restored on open
+
+### Export & Import
+| Format | Notes |
+|--------|-------|
+| PNG @3x | |
+| PNG transparent | |
+| JPEG @3x | |
+| PDF | Basic single-page |
+| SVG | Raster-in-SVG wrapper |
+| JSON | Full project round-trip |
+| Import JSON | Loads project from `.json` file |
+| Import image | From file or Ctrl+V paste |
+
+### Keyboard Shortcuts
+| Keys | Action |
+|------|--------|
+| `Ctrl+Z` | Undo (40-step) |
+| `Ctrl+Y` | Redo |
+| `Ctrl+C` | Copy selected |
+| `Ctrl+V` | Paste (elements or image from clipboard) |
+| `Ctrl+D` | Duplicate selected |
+| `Delete` / `Backspace` | Delete selected |
+| `Space+drag` | Pan canvas |
+| `Middle drag` | Pan canvas |
+| `Scroll` | Zoom |
+| `Alt+drag` | Drag-duplicate element |
+| `V P E R C T F A` | Tool shortcuts (customisable in Settings) |
+| Right-click drag | Quick eraser |
 
 ## Run
 
@@ -26,59 +93,53 @@ npm run dev
 npm run build
 ```
 
-Current production build baseline:
+## Test
 
-```text
-vite v7.3.3
-dist/index.html                  0.60 kB | gzip:   0.34 kB
-dist/assets/index-DxII_bnO.css  12.64 kB | gzip:   3.20 kB
-dist/assets/index-DBq-WFeP.js  653.46 kB | gzip: 204.07 kB
+```bash
+npm test
 ```
 
-Build status: passes. Vite reports the main JS chunk is larger than `500 kB` after minification.
+Covers: store actions (undo/redo, layer CRUD, z-order, element CRUD), `getElementBounds`, `DASH_MAP`, and `exportUtils`.
 
 ## Storage
 
-- Project data is saved in IndexedDB through Dexie.js.
-- `localStorage` is only used for small editor settings such as selected tool, stroke color, fill color, and brush size.
-- No backend is required.
+- **IndexedDB** (via Dexie.js) — project data
+- **localStorage** — editor settings only (tool, colors, brush size, shortcuts, grid prefs, stroke dash)
+- No backend required
 
 ## Architecture
 
-- `src/App.tsx` wires the editor shell, global keyboard shortcuts, last-session recovery, and autosave.
-- `src/components/CanvasStage.tsx` renders React-Konva layers and handles drawing, selection, zoom, pan, paste, and transforms.
-- `src/store/useEditorStore.ts` owns editor state, history, settings persistence, layer actions, and project save/load helpers.
-- `src/db/indexedDb.ts` defines the Dexie database and `projects` table.
-- `src/utils/exportUtils.ts` and `src/utils/clipboardUtils.ts` handle export/import helpers.
+```
+src/
+  App.tsx                  — shell, keyboard shortcuts, autosave, session recovery
+  components/
+    CanvasStage.tsx        — Konva stage, all drawing/selection/zoom/pan logic
+    Toolbar.tsx            — left tool picker
+    Topbar.tsx             — color, style, text, z-order, align/distribute, export controls
+    LayerPanel.tsx         — layer management
+    ProjectManager.tsx     — project CRUD
+    PropertiesPanel.tsx    — live X/Y/W/H/rotation/strokeWidth inputs
+    ColorPicker.tsx        — stroke/fill swatch + popover
+    SettingsPanel.tsx      — shortcuts + grid settings
+  store/
+    useEditorStore.ts      — Zustand store: state, history, settings, layer/element/project actions
+  db/
+    indexedDb.ts           — Dexie schema + helpers
+  types/
+    editor.ts              — CanvasElement union, EditorSettings, Layer, StrokeDash
+  utils/
+    elementUtils.ts        — getElementBounds, DASH_MAP
+    exportUtils.ts         — PNG/JPEG/PDF/SVG/JSON download helpers
+    clipboardUtils.ts      — image paste / file-to-dataURL helpers
+```
 
 ## Performance Notes
 
-- Autosave is debounced for `3000ms` to avoid writing IndexedDB on every edit.
-- `CanvasStage` groups elements by layer with `useMemo`.
-- Dexie indexes `projects` by `id`, `name`, `updatedAt`, and `createdAt`.
-- Main bundle is near the suggested `< 200KB gzipped` initial JavaScript budget (`204.07 kB gzip` in the latest measured build).
-- Next optimization target: split rarely used export/project-management code with `dynamic import()` or Rollup `manualChunks`.
-
-## Testing And Quality
-
-```bash
-npm run build
-```
-
-`npm test` is not configured yet:
-
-```text
-npm error Missing script: "test"
-```
-
-Recommended next quality step: add a small test runner such as Vitest, then cover store behavior in `src/store/useEditorStore.ts` before changing editor logic.
+- Autosave debounced 3 000 ms
+- `elementsByLayer` memoised with `useMemo`
+- History capped at 40 snapshots; duplicate-snapshot guard via `JSON.stringify` comparison
+- Main bundle ~204 kB gzip. Next target: dynamic `import()` for export/project-management code
 
 ## Deploy
 
-The Vite config uses:
-
-```ts
-base: './'
-```
-
-This keeps the build deployable on Vercel and GitHub Pages.
+`vite.config.ts` uses `base: './'` — deployable on Vercel and GitHub Pages without changes.

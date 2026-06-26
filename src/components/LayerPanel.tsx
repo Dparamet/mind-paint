@@ -15,43 +15,71 @@ export function LayerPanel() {
   } = useEditorStore();
 
   return (
-    <aside className="flex w-72 flex-col border-l border-line bg-panel">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-ink">Layers</h2>
-        <button className="icon-button" aria-label="Add layer" title="Add layer" onClick={addLayer}>
-          <Plus size={16} />
+    <aside className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">Layers</h2>
+        <button className="icon-button h-7 w-7" aria-label="Add layer" title="Add layer" onClick={addLayer}>
+          <Plus size={14} />
         </button>
       </div>
-      <div className="flex-1 space-y-2 overflow-auto p-3">
+
+      <div className="flex-1 space-y-1.5 overflow-auto p-2.5">
         {[...layers].reverse().map((layer) => (
           <div
             key={layer.id}
-            className={`rounded-md border bg-white p-2 ${activeLayerId === layer.id ? 'border-accent' : 'border-line'}`}
+            className={`rounded-lg border p-2 transition-colors cursor-pointer ${
+              activeLayerId === layer.id
+                ? 'border-accent/40 bg-accent/5'
+                : 'border-line bg-white hover:border-accent/30'
+            }`}
             onClick={() => setActiveLayerId(layer.id)}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <input
                 aria-label={`Rename ${layer.name}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-sm font-medium outline-none focus:border-accent"
+                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium outline-none focus:border-accent"
                 value={layer.name}
-                onChange={(event) => renameLayer(layer.id, event.target.value)}
+                onChange={(e) => renameLayer(layer.id, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
               />
-              <button className="icon-button h-8 w-8" aria-label="Toggle layer visibility" onClick={() => toggleLayerVisibility(layer.id)}>
-                {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+              <button
+                className={`icon-button h-7 w-7 ${!layer.visible ? 'text-ink/30' : 'opacity-50 hover:opacity-100'}`}
+                aria-label="Toggle visibility"
+                onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }}
+              >
+                {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
               </button>
-              <button className="icon-button h-8 w-8" aria-label="Toggle layer lock" onClick={() => toggleLayerLock(layer.id)}>
-                {layer.locked ? <Lock size={15} /> : <Unlock size={15} />}
+              <button
+                className={`icon-button h-7 w-7 ${layer.locked ? 'border-coral/40 text-coral' : 'opacity-50 hover:opacity-100'}`}
+                aria-label="Toggle lock"
+                onClick={(e) => { e.stopPropagation(); toggleLayerLock(layer.id); }}
+              >
+                {layer.locked ? <Lock size={13} /> : <Unlock size={13} />}
               </button>
             </div>
-            <div className="mt-2 flex justify-end gap-1">
-              <button className="icon-button h-8 w-8" aria-label="Move layer up" onClick={() => moveLayer(layer.id, 'up')}>
-                <ChevronUp size={15} />
+
+            <div className="mt-1.5 flex items-center justify-end gap-1">
+              <button
+                className="icon-button h-6 w-6"
+                aria-label="Move layer up"
+                onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'up'); }}
+              >
+                <ChevronUp size={12} />
               </button>
-              <button className="icon-button h-8 w-8" aria-label="Move layer down" onClick={() => moveLayer(layer.id, 'down')}>
-                <ChevronDown size={15} />
+              <button
+                className="icon-button h-6 w-6"
+                aria-label="Move layer down"
+                onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'down'); }}
+              >
+                <ChevronDown size={12} />
               </button>
-              <button className="icon-button h-8 w-8" aria-label="Delete layer" onClick={() => deleteLayer(layer.id)} disabled={layers.length === 1}>
-                <Trash2 size={15} />
+              <button
+                className="icon-button h-6 w-6 hover:border-coral hover:text-coral disabled:pointer-events-none"
+                aria-label="Delete layer"
+                onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }}
+                disabled={layers.length === 1}
+              >
+                <Trash2 size={12} />
               </button>
             </div>
           </div>

@@ -1,11 +1,12 @@
 import type Konva from 'konva';
-import { Download, FileDown, FileImage, FileText, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
-import { useRef, type RefObject } from 'react';
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
-import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, readJsonFile } from '../utils/exportUtils';
-import type { ImageElement } from '../types/editor';
+import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
+import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
 
 interface TopbarProps {
   stageRef: RefObject<Konva.Stage | null>;
@@ -15,9 +16,143 @@ interface TopbarProps {
 export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
+  const exportRef = useRef<HTMLDetailsElement>(null);
   const state = useEditorStore();
-  const activeLayer = state.layers.find((layer) => layer.id === state.activeLayerId);
+
+  const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
   const canAddImage = activeLayer?.visible && !activeLayer.locked;
+
+  // Selected elements — drives live color + text controls
+  const selectedEls = state.elements.filter((e) => state.selectedElementIds.includes(e.id));
+  const isSelectedText = selectedEls.some((e) => e.type === 'text');
+  const showTextControls = state.tool === 'text' || isSelectedText;
+  const hasSelection = selectedEls.length > 0;
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        exportRef.current.open = false;
+      }
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    return () => window.removeEventListener('mousedown', onMouseDown);
+  }, []);
+
+  // Live color — updates setting AND selected elements simultaneously
+  function handleStrokeChange(color: string) {
+    state.setStrokeColor(color);
+    selectedEls.forEach((el) => state.updateElement(el.id, { stroke: color }));
+  }
+
+  function handleFillChange(color: string) {
+    state.setFillColor(color);
+    selectedEls.forEach((el) => {
+      if (el.type !== 'line' && el.type !== 'arrow') {
+        state.updateElement(el.id, { fill: color });
+      }
+    });
+  }
+
+  function handleFontSize(size: number) {
+    state.setFontSize(size);
+    selectedEls
+      .filter((e): e is Extract<CanvasElement, { fontSize: number }> => 'fontSize' in e)
+      .forEach((el) => state.updateElement(el.id, { fontSize: size } as Partial<CanvasElement>));
+  }
+
+  function handleFontFamily(family: string) {
+    state.setFontFamily(family);
+    selectedEls
+      .filter((e): e is Extract<CanvasElement, { fontFamily: string }> => 'fontFamily' in e)
+      .forEach((el) => state.updateElement(el.id, { fontFamily: family } as Partial<CanvasElement>));
+  }
+
+  function handleBold(bold: boolean) {
+    state.setBold(bold);
+    const style = `${state.italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`;
+    selectedEls
+      .filter((e) => e.type === 'text')
+      .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
+  }
+
+  function handleItalic(italic: boolean) {
+    state.setItalic(italic);
+    const style = `${italic ? 'italic ' : ''}${state.bold ? 'bold' : 'normal'}`;
+    selectedEls
+      .filter((e) => e.type === 'text')
+      .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
+  }
+
+  function handleOpacity(opacity: number) {
+    // only first call snapshots history; rest are no-history so undo reverses all in 1 step
+    selectedEls.forEach((el, i) => state.updateElement(el.id, { opacity }, i === 0));
+  }
+
+  function handleDash(dash: StrokeDash) {
+    state.setStrokeDash(dash);
+    const points = DASH_MAP[dash];
+    selectedEls.forEach((el, i) => state.updateElement(el.id, { dash: points } as Partial<CanvasElement>, i === 0));
+  }
+
+  function alignSelected(axis: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') {
+    const bbs = selectedEls.map((el) => ({ el, b: getElementBounds(el) }));
+    const updates: Array<[string, Partial<CanvasElement>]> = [];
+    if (axis === 'left') {
+      const min = Math.min(...bbs.map(({ b }) => b.x));
+      bbs.forEach(({ el }) => updates.push([el.id, { x: min }]));
+    } else if (axis === 'right') {
+      const max = Math.max(...bbs.map(({ b }) => b.x + b.w));
+      bbs.forEach(({ el, b }) => updates.push([el.id, { x: max - b.w }]));
+    } else if (axis === 'center') {
+      const min = Math.min(...bbs.map(({ b }) => b.x));
+      const max = Math.max(...bbs.map(({ b }) => b.x + b.w));
+      const cx = (min + max) / 2;
+      bbs.forEach(({ el, b }) => updates.push([el.id, { x: cx - b.w / 2 }]));
+    } else if (axis === 'top') {
+      const min = Math.min(...bbs.map(({ b }) => b.y));
+      bbs.forEach(({ el }) => updates.push([el.id, { y: min }]));
+    } else if (axis === 'bottom') {
+      const max = Math.max(...bbs.map(({ b }) => b.y + b.h));
+      bbs.forEach(({ el, b }) => updates.push([el.id, { y: max - b.h }]));
+    } else {
+      const min = Math.min(...bbs.map(({ b }) => b.y));
+      const max = Math.max(...bbs.map(({ b }) => b.y + b.h));
+      const cy = (min + max) / 2;
+      bbs.forEach(({ el, b }) => updates.push([el.id, { y: cy - b.h / 2 }]));
+    }
+    updates.forEach(([id, patch], i) => state.updateElement(id, patch, i === 0));
+  }
+
+  function distributeSelected(dir: 'h' | 'v') {
+    if (selectedEls.length < 3) return;
+    const bbs = selectedEls.map((el) => ({ el, b: getElementBounds(el) }));
+    const updates: Array<[string, Partial<CanvasElement>]> = [];
+    if (dir === 'h') {
+      const sorted = [...bbs].sort((a, b) => a.b.x - b.b.x);
+      const span = sorted.at(-1)!.b.x + sorted.at(-1)!.b.w - sorted[0].b.x;
+      const totalW = sorted.reduce((s, { b }) => s + b.w, 0);
+      const gap = (span - totalW) / (sorted.length - 1);
+      let cursor = sorted[0].b.x + sorted[0].b.w + gap;
+      sorted.slice(1, -1).forEach(({ el, b }) => { updates.push([el.id, { x: cursor }]); cursor += b.w + gap; });
+    } else {
+      const sorted = [...bbs].sort((a, b) => a.b.y - b.b.y);
+      const span = sorted.at(-1)!.b.y + sorted.at(-1)!.b.h - sorted[0].b.y;
+      const totalH = sorted.reduce((s, { b }) => s + b.h, 0);
+      const gap = (span - totalH) / (sorted.length - 1);
+      let cursor = sorted[0].b.y + sorted[0].b.h + gap;
+      sorted.slice(1, -1).forEach(({ el, b }) => { updates.push([el.id, { y: cursor }]); cursor += b.h + gap; });
+    }
+    updates.forEach(([id, patch], i) => state.updateElement(id, patch, i === 0));
+  }
+
+  function exportSvg() {
+    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+    if (dataUrl) {
+      const name = state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint';
+      downloadSvg(dataUrl, state.width, state.height, `${name}.svg`);
+    }
+  }
 
   async function uploadImage(file: File | undefined) {
     if (!file || !canAddImage) return;
@@ -51,12 +186,13 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {
     const stage = stageRef.current;
     if (!stage) return;
-    const oldFill = stage.findOne('Rect')?.attrs.fill;
-    if (transparent) stage.findOne('Rect')?.setAttr('fill', '#00000000');
+    const bgRect = stage.findOne('Rect');
+    const oldFill = bgRect?.attrs.fill;
+    if (transparent) bgRect?.setAttr('fill', '#00000000');
     const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType, quality: 0.92 });
-    if (transparent) stage.findOne('Rect')?.setAttr('fill', oldFill);
-    const extension = mimeType === 'image/png' ? 'png' : 'jpg';
-    downloadDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}@3x.${extension}`);
+    if (transparent) bgRect?.setAttr('fill', oldFill);
+    const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+    downloadDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}@3x.${ext}`);
   }
 
   function exportPdf() {
@@ -65,114 +201,212 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function clearCanvas() {
-    const firstConfirm = window.confirm('Clear everything on the current canvas?');
-    if (!firstConfirm) return;
-    const secondConfirm = window.confirm('This will remove all elements and reset the page. Continue?');
-    if (!secondConfirm) return;
+    if (!window.confirm('Clear everything on the current canvas?')) return;
+    if (!window.confirm('This will remove all elements and reset the page. Continue?')) return;
     state.clearCanvas();
   }
 
+  function runExport(action: () => void) {
+    action();
+    if (exportRef.current) exportRef.current.open = false;
+  }
+
+  const selOpacity = selectedEls[0]?.opacity ?? 1;
+  const selDashRaw = selectedEls[0]?.dash;
+  const selDashStr = JSON.stringify(selDashRaw ?? []);
+  const activeDash: StrokeDash = (Object.keys(DASH_MAP) as StrokeDash[]).find((k) => JSON.stringify(DASH_MAP[k]) === selDashStr) ?? 'solid';
+
+  const exportItems = [
+    { label: 'PNG @3x', action: () => exportImage('image/png') },
+    { label: 'PNG transparent', action: () => exportImage('image/png', true) },
+    { label: 'JPEG @3x', action: () => exportImage('image/jpeg') },
+    { label: 'PDF', action: exportPdf },
+    { label: 'SVG', action: exportSvg },
+    { label: 'JSON', action: () => downloadJson(state.toProject()) },
+  ];
+
   return (
-    <header className="flex flex-col gap-3 border-b border-line bg-panel px-4 py-3 xl:flex-row xl:items-center">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+    <header className="flex flex-col gap-2 border-b border-line bg-panel px-4 py-2">
+      {/* Row 1: drawing controls */}
+      <div className="flex flex-wrap items-center gap-2">
         <input
           aria-label="Project name"
-          className="w-full min-w-0 max-w-56 rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none focus:border-accent sm:w-56"
+          className="w-44 min-w-0 rounded-md border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
           value={state.name}
-          onChange={(event) => state.setName(event.target.value)}
+          onChange={(e) => state.setName(e.target.value)}
         />
-        <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={state.setStrokeColor} />
-        <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={state.setFillColor} />
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-          Brush
-          <input
-            aria-label="Brush size"
-            className="w-28 accent-accent"
-            type="range"
-            min="1"
-            max="48"
-            value={state.brushSize}
-            onChange={(event) => state.setBrushSize(Number(event.target.value))}
-          />
-          <span className="w-6 tabular-nums">{state.brushSize}</span>
+        <div className="h-5 w-px bg-line" />
+
+        {/* Color pickers — live-apply to selected elements */}
+        <div className="flex items-center gap-2">
+          <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={handleStrokeChange} />
+          <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
+          {hasSelection && (
+            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+              → selection
+            </span>
+          )}
+        </div>
+        <div className="h-5 w-px bg-line" />
+
+        {/* Context-aware: brush OR text controls */}
+        {showTextControls ? (
+          <>
+            <select
+              aria-label="Font family"
+              className="rounded-md border border-line bg-white px-2 py-1.5 text-xs outline-none focus:border-accent"
+              value={state.fontFamily}
+              onChange={(e) => handleFontFamily(e.target.value)}
+            >
+              <option value="Inter, sans-serif">Inter</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Courier New', monospace">Courier</option>
+              <option value="Verdana, sans-serif">Verdana</option>
+            </select>
+            <input
+              aria-label="Font size"
+              className="w-16 rounded-md border border-line bg-white px-2 py-1.5 text-xs outline-none focus:border-accent"
+              type="number" min="10" max="96" step="2"
+              value={state.fontSize}
+              onChange={(e) => handleFontSize(Number(e.target.value))}
+            />
+            <button
+              className={`icon-button h-8 w-8 font-bold ${state.bold ? 'border-accent text-accent' : ''}`}
+              title="Bold"
+              onClick={() => handleBold(!state.bold)}
+            >
+              B
+            </button>
+            <button
+              className={`icon-button h-8 w-8 italic ${state.italic ? 'border-accent text-accent' : ''}`}
+              title="Italic"
+              onClick={() => handleItalic(!state.italic)}
+            >
+              I
+            </button>
+          </>
+        ) : (
+          <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
+            Brush
+            <input
+              aria-label="Brush size"
+              className="w-24 accent-accent"
+              type="range" min="1" max="48"
+              value={state.brushSize}
+              onChange={(e) => state.setBrushSize(Number(e.target.value))}
+            />
+            <span className="w-5 tabular-nums">{state.brushSize}</span>
+          </label>
+        )}
+        <div className="h-5 w-px bg-line" />
+
+        <label className="flex items-center gap-1.5 text-xs font-medium text-ink" title="Show grid">
+          <input type="checkbox" checked={state.showGrid} onChange={(e) => state.setShowGrid(e.target.checked)} />
+          <Grid2X2 size={13} />
         </label>
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-          <input aria-label="Show grid" type="checkbox" checked={state.showGrid} onChange={(event) => state.setShowGrid(event.target.checked)} />
-          <Grid2X2 size={14} />
-        </label>
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-          <input aria-label="Snap to grid" type="checkbox" checked={state.snapToGrid} onChange={(event) => state.setSnapToGrid(event.target.checked)} />
+        <label className="flex items-center gap-1.5 text-xs font-medium text-ink">
+          <input type="checkbox" checked={state.snapToGrid} onChange={(e) => state.setSnapToGrid(e.target.checked)} />
           Snap
         </label>
-        <select
-          aria-label="Font family"
-          className="rounded-md border border-line bg-white px-2 py-2 text-xs outline-none focus:border-accent"
-          value={state.fontFamily}
-          onChange={(event) => state.setFontFamily(event.target.value)}
-        >
-          <option value="Inter, sans-serif">Inter</option>
-          <option value="Georgia, serif">Georgia</option>
-          <option value="'Courier New', monospace">Courier</option>
-          <option value="Verdana, sans-serif">Verdana</option>
-        </select>
-        <input
-          aria-label="Font size"
-          className="w-16 rounded-md border border-line bg-white px-2 py-2 text-xs outline-none focus:border-accent"
-          type="number"
-          min="10"
-          max="96"
-          value={state.fontSize}
-          onChange={(event) => state.setFontSize(Number(event.target.value))}
-        />
-        <button className={`icon-button ${state.bold ? 'border-accent text-accent' : ''}`} title="Bold" aria-label="Bold" onClick={() => state.setBold(!state.bold)}>
-          <strong>B</strong>
+
+        {hasSelection && (
+          <>
+            <div className="h-5 w-px bg-line" />
+            <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
+              Opacity
+              <input type="range" min="0.1" max="1" step="0.05" className="w-20 accent-accent"
+                value={selOpacity}
+                onChange={(e) => handleOpacity(Number(e.target.value))}
+              />
+              <span className="w-7 tabular-nums">{Math.round(selOpacity * 100)}%</span>
+            </label>
+            <div className="flex items-center gap-0.5 rounded border border-line bg-white p-0.5">
+              {(['solid', 'dashed', 'dotted'] as const).map((d) => (
+                <button key={d} title={d}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-white' : 'text-ink hover:bg-accent/10'}`}
+                  onClick={() => handleDash(d)}
+                >
+                  {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Row 2: actions */}
+      <div className="flex items-center gap-1">
+        <button className="icon-button h-8 w-8" title="Undo (Ctrl+Z)" onClick={state.undo} disabled={!state.history.length}>
+          <Undo2 size={15} />
         </button>
-        <button className={`icon-button ${state.italic ? 'border-accent text-accent' : ''}`} title="Italic" aria-label="Italic" onClick={() => state.setItalic(!state.italic)}>
-          <em>I</em>
+        <button className="icon-button h-8 w-8" title="Redo (Ctrl+Y)" onClick={state.redo} disabled={!state.future.length}>
+          <Redo2 size={15} />
+        </button>
+        <div className="mx-1 h-5 w-px bg-line" />
+        {state.selectedElementId && selectedEls.length === 1 && (
+          <>
+            <div className="mx-1 h-5 w-px bg-line" />
+            <button className="icon-button h-8 w-8" title="Bring to front" onClick={() => state.moveElementToFront(state.selectedElementId!)}><ChevronsUp size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Bring forward" onClick={() => state.moveElementForward(state.selectedElementId!)}><ChevronUp size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Send backward" onClick={() => state.moveElementBackward(state.selectedElementId!)}><ChevronDown size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Send to back" onClick={() => state.moveElementToBack(state.selectedElementId!)}><ChevronsDown size={14} /></button>
+          </>
+        )}
+        <div className="mx-1 h-5 w-px bg-line" />
+        <button className="icon-button h-8 w-8" title="Upload image" onClick={() => imageInputRef.current?.click()} disabled={!canAddImage}>
+          <ImagePlus size={15} />
+        </button>
+        <button className="icon-button h-8 w-8" title="Save" onClick={state.saveCurrentProject}>
+          <Save size={15} />
+        </button>
+        <button className="icon-button h-8 w-8 hover:border-coral hover:text-coral" title="Clear canvas" onClick={clearCanvas}>
+          <Trash2 size={15} />
+        </button>
+        <div className="mx-1 h-5 w-px bg-line" />
+        <details ref={exportRef} className="relative">
+          <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent">
+            <Download size={14} /> Export
+          </summary>
+          <div className="absolute left-0 top-full z-50 mt-1 min-w-max overflow-hidden rounded-md border border-line bg-panel shadow-soft">
+            {exportItems.map(({ label, action }) => (
+              <button key={label} className="block w-full px-4 py-2 text-left text-sm hover:bg-accent/10" onClick={() => runExport(action)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </details>
+        <button className="icon-button h-8 w-8" title="Import JSON" onClick={() => jsonInputRef.current?.click()}>
+          <FileUp size={15} />
+        </button>
+        <div className="mx-1 h-5 w-px bg-line" />
+        <button className="icon-button h-8 w-8" title="Settings" onClick={onOpenSettings}>
+          <Settings size={15} />
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-        <button className="icon-button shrink-0" title="Undo" aria-label="Undo" onClick={state.undo} disabled={!state.history.length}>
-          <Undo2 size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Redo" aria-label="Redo" onClick={state.redo} disabled={!state.future.length}>
-          <Redo2 size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Upload image" aria-label="Upload image" onClick={() => imageInputRef.current?.click()} disabled={!canAddImage}>
-          <ImagePlus size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Save" aria-label="Save" onClick={state.saveCurrentProject}>
-          <Save size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
-          <Trash2 size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Export PNG @3x" aria-label="Export PNG" onClick={() => exportImage('image/png')}>
-          <Download size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Export transparent PNG @3x" aria-label="Export transparent PNG" onClick={() => exportImage('image/png', true)}>
-          <FileImage size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Export JPEG @3x" aria-label="Export JPEG" onClick={() => exportImage('image/jpeg')}>
-          <FileImage size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Export PDF" aria-label="Export PDF" onClick={exportPdf}>
-          <FileText size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Export JSON" aria-label="Export JSON" onClick={() => downloadJson(state.toProject())}>
-          <FileDown size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Import JSON" aria-label="Import JSON" onClick={() => jsonInputRef.current?.click()}>
-          <FileUp size={17} />
-        </button>
-        <button className="icon-button shrink-0" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
-          <Settings size={17} />
-        </button>
-      </div>
+      {selectedEls.length > 1 && (
+        <div className="flex items-center gap-1 border-t border-line pt-1.5">
+          <span className="mr-1 text-[10px] font-medium text-ink/60">Align</span>
+          <button className="icon-button h-7 w-7" title="Align left" onClick={() => alignSelected('left')}><AlignLeft size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align center" onClick={() => alignSelected('center')}><AlignCenter size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align right" onClick={() => alignSelected('right')}><AlignRight size={13} /></button>
+          <div className="mx-1 h-4 w-px bg-line" />
+          <button className="icon-button h-7 px-2 text-[10px]" title="Align top" onClick={() => alignSelected('top')}>⊤</button>
+          <button className="icon-button h-7 px-2 text-[10px]" title="Align middle" onClick={() => alignSelected('middle')}>⊕</button>
+          <button className="icon-button h-7 px-2 text-[10px]" title="Align bottom" onClick={() => alignSelected('bottom')}>⊥</button>
+          {selectedEls.length > 2 && (
+            <>
+              <div className="mx-1 h-4 w-px bg-line" />
+              <span className="mr-1 text-[10px] font-medium text-ink/60">Distribute</span>
+              <button className="icon-button h-7 px-2 text-[10px]" title="Distribute horizontally" onClick={() => distributeSelected('h')}>↔</button>
+              <button className="icon-button h-7 px-2 text-[10px]" title="Distribute vertically" onClick={() => distributeSelected('v')}>↕</button>
+            </>
+          )}
+        </div>
+      )}
 
-      <input ref={imageInputRef} className="hidden" type="file" accept="image/*" onChange={(event) => void uploadImage(event.target.files?.[0])} />
-      <input ref={jsonInputRef} className="hidden" type="file" accept="application/json" onChange={(event) => void importJson(event.target.files?.[0])} />
+      <input ref={imageInputRef} className="hidden" type="file" accept="image/*" onChange={(e) => void uploadImage(e.target.files?.[0])} />
+      <input ref={jsonInputRef} className="hidden" type="file" accept="application/json" onChange={(e) => void importJson(e.target.files?.[0])} />
     </header>
   );
 }
