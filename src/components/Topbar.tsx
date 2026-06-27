@@ -1,5 +1,5 @@
 import type Konva from 'konva';
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
+import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
@@ -22,13 +22,11 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
   const canAddImage = activeLayer?.visible && !activeLayer.locked;
 
-  // Selected elements — drives live color + text controls
   const selectedEls = state.elements.filter((e) => state.selectedElementIds.includes(e.id));
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;
 
-  // Close export dropdown on outside click
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
@@ -39,7 +37,6 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     return () => window.removeEventListener('mousedown', onMouseDown);
   }, []);
 
-  // Live color — updates setting AND selected elements simultaneously
   function handleStrokeChange(color: string) {
     state.setStrokeColor(color);
     selectedEls.forEach((el) => state.updateElement(el.id, { stroke: color }));
@@ -85,7 +82,6 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function handleOpacity(opacity: number) {
-    // only first call snapshots history; rest are no-history so undo reverses all in 1 step
     selectedEls.forEach((el, i) => state.updateElement(el.id, { opacity }, i === 0));
   }
 
@@ -226,8 +222,9 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   ];
 
   return (
-    <header className="flex flex-col gap-2 border-b border-line bg-panel px-4 py-2">
-      {/* Row 1: drawing controls */}
+    <header className="flex flex-col gap-1.5 border-b border-line bg-panel px-4 py-2">
+
+      {/* Row 1 — drawing controls */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           aria-label="Project name"
@@ -237,19 +234,15 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         />
         <div className="h-5 w-px bg-line" />
 
-        {/* Color pickers — live-apply to selected elements */}
         <div className="flex items-center gap-2">
           <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={handleStrokeChange} />
           <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
           {hasSelection && (
-            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-              → selection
-            </span>
+            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
           )}
         </div>
         <div className="h-5 w-px bg-line" />
 
-        {/* Context-aware: brush OR text controls */}
         {showTextControls ? (
           <>
             <select
@@ -271,19 +264,15 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
               onChange={(e) => handleFontSize(Number(e.target.value))}
             />
             <button
-              className={`icon-button h-8 w-8 font-bold ${state.bold ? 'border-accent text-accent' : ''}`}
-              title="Bold"
+              aria-label="Bold" aria-pressed={state.bold} title="Bold"
+              className={`icon-button h-8 w-8 font-bold ${state.bold ? 'border-accent bg-accent/10 text-accent' : ''}`}
               onClick={() => handleBold(!state.bold)}
-            >
-              B
-            </button>
+            >B</button>
             <button
-              className={`icon-button h-8 w-8 italic ${state.italic ? 'border-accent text-accent' : ''}`}
-              title="Italic"
+              aria-label="Italic" aria-pressed={state.italic} title="Italic"
+              className={`icon-button h-8 w-8 italic ${state.italic ? 'border-accent bg-accent/10 text-accent' : ''}`}
               onClick={() => handleItalic(!state.italic)}
-            >
-              I
-            </button>
+            >I</button>
           </>
         ) : (
           <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
@@ -301,65 +290,66 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <div className="h-5 w-px bg-line" />
 
         <label className="flex items-center gap-1.5 text-xs font-medium text-ink" title="Show grid">
-          <input type="checkbox" checked={state.showGrid} onChange={(e) => state.setShowGrid(e.target.checked)} />
+          <input type="checkbox" className="accent-accent" checked={state.showGrid} onChange={(e) => state.setShowGrid(e.target.checked)} />
           <Grid2X2 size={13} />
         </label>
         <label className="flex items-center gap-1.5 text-xs font-medium text-ink">
-          <input type="checkbox" checked={state.snapToGrid} onChange={(e) => state.setSnapToGrid(e.target.checked)} />
+          <input type="checkbox" className="accent-accent" checked={state.snapToGrid} onChange={(e) => state.setSnapToGrid(e.target.checked)} />
           Snap
         </label>
-
-        {hasSelection && (
-          <>
-            <div className="h-5 w-px bg-line" />
-            <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
-              Opacity
-              <input type="range" min="0.1" max="1" step="0.05" className="w-20 accent-accent"
-                value={selOpacity}
-                onChange={(e) => handleOpacity(Number(e.target.value))}
-              />
-              <span className="w-7 tabular-nums">{Math.round(selOpacity * 100)}%</span>
-            </label>
-            <div className="flex items-center gap-0.5 rounded border border-line bg-white p-0.5">
-              {(['solid', 'dashed', 'dotted'] as const).map((d) => (
-                <button key={d} title={d}
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-white' : 'text-ink hover:bg-accent/10'}`}
-                  onClick={() => handleDash(d)}
-                >
-                  {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
       </div>
 
-      {/* Row 2: actions */}
+      {/* Style row — opacity + stroke dash, only when elements are selected */}
+      {hasSelection && (
+        <div className="flex items-center gap-3">
+          <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
+            Opacity
+            <input type="range" min="0.1" max="1" step="0.05" className="w-20 accent-accent"
+              value={selOpacity}
+              onChange={(e) => handleOpacity(Number(e.target.value))}
+            />
+            <span className="w-7 tabular-nums">{Math.round(selOpacity * 100)}%</span>
+          </label>
+          <div className="h-4 w-px bg-line" />
+          <span className="text-xs font-medium text-ink/60">Stroke</span>
+          <div className="flex items-center gap-0.5 rounded border border-line bg-white p-0.5">
+            {(['solid', 'dashed', 'dotted'] as const).map((d) => (
+              <button key={d} title={d} aria-pressed={activeDash === d}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-white' : 'text-ink hover:bg-accent/10'}`}
+                onClick={() => handleDash(d)}
+              >
+                {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Row 2 — actions */}
       <div className="flex items-center gap-1">
-        <button className="icon-button h-8 w-8" title="Undo (Ctrl+Z)" onClick={state.undo} disabled={!state.history.length}>
+        <button className="icon-button h-8 w-8" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={state.undo} disabled={!state.history.length}>
           <Undo2 size={15} />
         </button>
-        <button className="icon-button h-8 w-8" title="Redo (Ctrl+Y)" onClick={state.redo} disabled={!state.future.length}>
+        <button className="icon-button h-8 w-8" title="Redo (Ctrl+Y)" aria-label="Redo" onClick={state.redo} disabled={!state.future.length}>
           <Redo2 size={15} />
         </button>
-        <div className="mx-1 h-5 w-px bg-line" />
         {state.selectedElementId && selectedEls.length === 1 && (
           <>
             <div className="mx-1 h-5 w-px bg-line" />
-            <button className="icon-button h-8 w-8" title="Bring to front" onClick={() => state.moveElementToFront(state.selectedElementId!)}><ChevronsUp size={14} /></button>
-            <button className="icon-button h-8 w-8" title="Bring forward" onClick={() => state.moveElementForward(state.selectedElementId!)}><ChevronUp size={14} /></button>
-            <button className="icon-button h-8 w-8" title="Send backward" onClick={() => state.moveElementBackward(state.selectedElementId!)}><ChevronDown size={14} /></button>
-            <button className="icon-button h-8 w-8" title="Send to back" onClick={() => state.moveElementToBack(state.selectedElementId!)}><ChevronsDown size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Bring to front" aria-label="Bring to front" onClick={() => state.moveElementToFront(state.selectedElementId!)}><ChevronsUp size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Bring forward" aria-label="Bring forward" onClick={() => state.moveElementForward(state.selectedElementId!)}><ChevronUp size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Send backward" aria-label="Send backward" onClick={() => state.moveElementBackward(state.selectedElementId!)}><ChevronDown size={14} /></button>
+            <button className="icon-button h-8 w-8" title="Send to back" aria-label="Send to back" onClick={() => state.moveElementToBack(state.selectedElementId!)}><ChevronsDown size={14} /></button>
           </>
         )}
         <div className="mx-1 h-5 w-px bg-line" />
-        <button className="icon-button h-8 w-8" title="Upload image" onClick={() => imageInputRef.current?.click()} disabled={!canAddImage}>
+        <button className="icon-button h-8 w-8" title="Upload image" aria-label="Upload image" onClick={() => imageInputRef.current?.click()} disabled={!canAddImage}>
           <ImagePlus size={15} />
         </button>
-        <button className="icon-button h-8 w-8" title="Save" onClick={state.saveCurrentProject}>
+        <button className="icon-button h-8 w-8" title="Save (Ctrl+S)" aria-label="Save" onClick={state.saveCurrentProject}>
           <Save size={15} />
         </button>
-        <button className="icon-button h-8 w-8 hover:border-coral hover:text-coral" title="Clear canvas" onClick={clearCanvas}>
+        <button className="icon-button h-8 w-8 hover:border-coral hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
           <Trash2 size={15} />
         </button>
         <div className="mx-1 h-5 w-px bg-line" />
@@ -375,31 +365,32 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
             ))}
           </div>
         </details>
-        <button className="icon-button h-8 w-8" title="Import JSON" onClick={() => jsonInputRef.current?.click()}>
+        <button className="icon-button h-8 w-8" title="Import JSON" aria-label="Import JSON" onClick={() => jsonInputRef.current?.click()}>
           <FileUp size={15} />
         </button>
         <div className="mx-1 h-5 w-px bg-line" />
-        <button className="icon-button h-8 w-8" title="Settings" onClick={onOpenSettings}>
+        <button className="icon-button h-8 w-8" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
           <Settings size={15} />
         </button>
       </div>
 
+      {/* Row 3 — align + distribute (multi-select only) */}
       {selectedEls.length > 1 && (
-        <div className="flex items-center gap-1 border-t border-line pt-1.5">
-          <span className="mr-1 text-[10px] font-medium text-ink/60">Align</span>
-          <button className="icon-button h-7 w-7" title="Align left" onClick={() => alignSelected('left')}><AlignLeft size={13} /></button>
-          <button className="icon-button h-7 w-7" title="Align center" onClick={() => alignSelected('center')}><AlignCenter size={13} /></button>
-          <button className="icon-button h-7 w-7" title="Align right" onClick={() => alignSelected('right')}><AlignRight size={13} /></button>
+        <div className="flex items-center gap-1">
+          <span className="mr-1 text-[10px] font-medium text-ink/50">Align</span>
+          <button className="icon-button h-7 w-7" title="Align left" aria-label="Align left" onClick={() => alignSelected('left')}><AlignLeft size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align center" aria-label="Align center" onClick={() => alignSelected('center')}><AlignCenter size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align right" aria-label="Align right" onClick={() => alignSelected('right')}><AlignRight size={13} /></button>
           <div className="mx-1 h-4 w-px bg-line" />
-          <button className="icon-button h-7 px-2 text-[10px]" title="Align top" onClick={() => alignSelected('top')}>⊤</button>
-          <button className="icon-button h-7 px-2 text-[10px]" title="Align middle" onClick={() => alignSelected('middle')}>⊕</button>
-          <button className="icon-button h-7 px-2 text-[10px]" title="Align bottom" onClick={() => alignSelected('bottom')}>⊥</button>
+          <button className="icon-button h-7 w-7" title="Align top" aria-label="Align top" onClick={() => alignSelected('top')}><AlignStartVertical size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align middle" aria-label="Align middle" onClick={() => alignSelected('middle')}><AlignCenterVertical size={13} /></button>
+          <button className="icon-button h-7 w-7" title="Align bottom" aria-label="Align bottom" onClick={() => alignSelected('bottom')}><AlignEndVertical size={13} /></button>
           {selectedEls.length > 2 && (
             <>
               <div className="mx-1 h-4 w-px bg-line" />
-              <span className="mr-1 text-[10px] font-medium text-ink/60">Distribute</span>
-              <button className="icon-button h-7 px-2 text-[10px]" title="Distribute horizontally" onClick={() => distributeSelected('h')}>↔</button>
-              <button className="icon-button h-7 px-2 text-[10px]" title="Distribute vertically" onClick={() => distributeSelected('v')}>↕</button>
+              <span className="mr-1 text-[10px] font-medium text-ink/50">Distribute</span>
+              <button className="icon-button h-7 w-7" title="Distribute horizontally" aria-label="Distribute horizontally" onClick={() => distributeSelected('h')}><AlignHorizontalSpaceBetween size={13} /></button>
+              <button className="icon-button h-7 w-7" title="Distribute vertically" aria-label="Distribute vertically" onClick={() => distributeSelected('v')}><AlignVerticalSpaceBetween size={13} /></button>
             </>
           )}
         </div>

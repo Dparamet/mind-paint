@@ -38,21 +38,26 @@ select {
 }
 
 /* Thin scrollbars for panels */
-.overflow-auto {
+.overflow-auto,
+.overflow-y-auto {
   scrollbar-width: thin;
   scrollbar-color: #ded7ca transparent;
 }
-.overflow-auto::-webkit-scrollbar {
+.overflow-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
-.overflow-auto::-webkit-scrollbar-track {
+.overflow-auto::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track {
   background: transparent;
 }
-.overflow-auto::-webkit-scrollbar-thumb {
+.overflow-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb {
   background: #ded7ca;
   border-radius: 2px;
 }
-.overflow-auto::-webkit-scrollbar-thumb:hover {
+.overflow-auto::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: #c9c0b5;
 }

@@ -1,4 +1,4 @@
-import { ArrowUpRight, Circle, Eraser, MousePointer2, PaintBucket, Pencil, PenLine, Square, Type } from 'lucide-react';
+import { ArrowUpRight, Brain, Circle, Eraser, MessageSquare, Minus, MousePointer2, PaintBucket, Pencil, PenLine, Square, StickyNote, Type } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { Tool } from '../types/editor';
 import { useEditorStore } from '../store/useEditorStore';
@@ -18,11 +18,14 @@ const toolGroups: ToolEntry[][] = [
   [
     { id: 'rectangle', label: 'Rectangle (R)', icon: Square },
     { id: 'circle', label: 'Circle (C)', icon: Circle },
-    { id: 'line', label: 'Line', icon: PenLine },
+    { id: 'line', label: 'Line', icon: Minus },
     { id: 'arrow', label: 'Arrow (A)', icon: ArrowUpRight },
   ],
   [
     { id: 'text', label: 'Text (T)', icon: Type },
+    { id: 'sticky', label: 'Sticky note', icon: StickyNote },
+    { id: 'mindNode', label: 'Mind node', icon: Brain },
+    { id: 'speech', label: 'Speech bubble', icon: MessageSquare },
   ],
 ];
 
@@ -42,6 +45,7 @@ export function Toolbar() {
             <button
               key={id}
               aria-label={label}
+              aria-pressed={tool === id}
               title={label}
               className={`tool-button ${tool === id ? 'tool-button-active' : ''}`}
               onClick={() => setTool(id)}

@@ -25,7 +25,7 @@ function Swatch({ color, selected, onPick }: { color: string; selected: boolean;
       aria-label={color}
       aria-pressed={selected}
       title={color}
-      className={`flex h-6 w-6 items-center justify-center rounded border transition ${selected ? 'border-accent ring-2 ring-accent/40' : 'border-line hover:border-accent'}`}
+      className={`flex h-6 w-6 items-center justify-center rounded border transition shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] ${selected ? 'border-accent ring-2 ring-accent/40' : 'border-line hover:border-accent'}`}
       style={{ backgroundColor: color }}
       onClick={() => onPick(color)}
     >
