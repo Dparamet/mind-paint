@@ -368,8 +368,19 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     const hitId = event.target.id();
     if (tool === 'fill') {
-      const pos = stageRef.current?.getPointerPosition();
-      if (pos) floodFill(pos.x, pos.y);
+      // Check direct hit first; group children (sticky/mindNode/speech inner Rect/Text) have no id,
+      // so traverse to parent to find the group's element id.
+      let targetId = hitId;
+      if (!elements.find((e) => e.id === targetId)) {
+        targetId = (event.target.parent as Konva.Node | null)?.id() ?? '';
+      }
+      const hitEl = elements.find((e) => e.id === targetId);
+      if (hitEl && ['rect', 'circle', 'sticky', 'mindNode', 'speech'].includes(hitEl.type)) {
+        updateElement(hitEl.id, { fill: fillColor });
+      } else {
+        const pos = stageRef.current?.getPointerPosition();
+        if (pos) floodFill(pos.x, pos.y);
+      }
       return;
     }
 

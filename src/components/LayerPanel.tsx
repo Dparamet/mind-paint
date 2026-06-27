@@ -43,31 +43,28 @@ export function LayerPanel() {
                 onClick={(e) => e.stopPropagation()}
               />
               <button
-                className={`icon-button h-7 w-7 ${!layer.visible ? 'text-ink/30' : 'opacity-50 hover:opacity-100'}`}
+                className={`icon-button h-6 w-6 ${!layer.visible ? 'text-ink/30' : 'opacity-50 hover:opacity-100'}`}
                 aria-label="Toggle visibility"
                 onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }}
               >
-                {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
               </button>
               <button
-                className={`icon-button h-7 w-7 ${layer.locked ? 'border-coral/40 text-coral' : 'opacity-50 hover:opacity-100'}`}
+                className={`icon-button h-6 w-6 ${layer.locked ? 'border-coral/40 text-coral' : 'opacity-50 hover:opacity-100'}`}
                 aria-label="Toggle lock"
                 onClick={(e) => { e.stopPropagation(); toggleLayerLock(layer.id); }}
               >
-                {layer.locked ? <Lock size={13} /> : <Unlock size={13} />}
+                {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
               </button>
-            </div>
-
-            <div className="mt-1.5 flex items-center justify-end gap-1">
               <button
-                className="icon-button h-6 w-6"
+                className="icon-button h-6 w-6 opacity-50 hover:opacity-100"
                 aria-label="Move layer up"
                 onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'up'); }}
               >
                 <ChevronUp size={12} />
               </button>
               <button
-                className="icon-button h-6 w-6"
+                className="icon-button h-6 w-6 opacity-50 hover:opacity-100"
                 aria-label="Move layer down"
                 onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'down'); }}
               >
