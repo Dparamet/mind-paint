@@ -25,10 +25,10 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
   const canAddImage = activeLayer?.visible && !activeLayer.locked;
 
-  const selectedEls = useMemo(
-    () => state.elements.filter((e) => state.selectedElementIds.includes(e.id)),
-    [state.elements, state.selectedElementIds],
-  );
+  const selectedEls = useMemo(() => {
+    const idSet = new Set(state.selectedElementIds);
+    return state.elements.filter((e) => idSet.has(e.id));
+  }, [state.elements, state.selectedElementIds]);
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;

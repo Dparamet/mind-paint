@@ -26,6 +26,8 @@ function isElementInLasso(el: CanvasElement, pts: number[]) {
   ).some(([x, y]) => pointInPolygon(x, y, pts));
 }
 
+const EMPTY_POINTS: number[] = [];
+
 interface CanvasStageProps {
   stageRef: RefObject<Konva.Stage | null>;
 }
@@ -384,6 +386,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (clickedStage && !isSpacePressed) {
         setSelectedElementIds([]);
         marqueeStartRef.current = point;
+        marqueeKonvaRef.current?.visible(true);
       }
       return;
     }
@@ -606,9 +609,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           const dx = p.x - prev[prev.length - 2], dy = p.y - prev[prev.length - 1];
           if (dx * dx + dy * dy < 9) return;
         }
-        lassoPointsRef.current = [...prev, p.x, p.y];
+        prev.push(p.x, p.y);
         if (lassoLineRef.current) {
-          lassoLineRef.current.points(lassoPointsRef.current);
+          lassoLineRef.current.points(prev);
           lassoLineRef.current.getLayer()?.batchDraw();
         }
       }
@@ -622,7 +625,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const m = { x: Math.min(start.x, mp.x), y: Math.min(start.y, mp.y), w: Math.abs(mp.x - start.x), h: Math.abs(mp.y - start.y) };
         marqueeRef.current = m;
         if (marqueeKonvaRef.current) {
-          marqueeKonvaRef.current.setAttrs({ x: m.x, y: m.y, width: m.w, height: m.h, visible: true });
+          marqueeKonvaRef.current.setAttrs({ x: m.x, y: m.y, width: m.w, height: m.h });
           marqueeKonvaRef.current.getLayer()?.batchDraw();
         }
       }
@@ -667,7 +670,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       lassoPointsRef.current = [];
       if (lassoLineRef.current) {
         lassoLineRef.current.visible(false);
-        lassoLineRef.current.points([]);
+        lassoLineRef.current.points(EMPTY_POINTS);
         lassoLineRef.current.getLayer()?.batchDraw();
       }
     }
@@ -933,7 +936,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           />
           <Line
             ref={lassoLineRef}
-            visible={false} points={[]}
+            visible={false} points={EMPTY_POINTS}
             stroke="#4c7eff" strokeWidth={1.5 / scale}
             dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
             closed listening={false}
