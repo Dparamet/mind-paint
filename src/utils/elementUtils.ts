@@ -7,11 +7,11 @@ export function getElementBounds(el: CanvasElement): { x: number; y: number; w: 
     case 'sticky':
     case 'mindNode':
     case 'speech':
-      return { x: el.x, y: el.y, w: el.width, h: el.height };
+      return { x: el.x, y: el.y, w: el.width || 1, h: el.height || 1 };
     case 'circle':
-      return { x: el.x - el.radiusX, y: el.y - el.radiusY, w: el.radiusX * 2, h: el.radiusY * 2 };
+      return { x: el.x - el.radiusX, y: el.y - el.radiusY, w: el.radiusX * 2 || 1, h: el.radiusY * 2 || 1 };
     case 'text':
-      return { x: el.x, y: el.y, w: el.width, h: el.fontSize * 2 };
+      return { x: el.x, y: el.y, w: el.width || 1, h: el.fontSize * 2 || 1 };
     case 'line':
     case 'arrow': {
       const xs = el.points.filter((_, i) => i % 2 === 0);

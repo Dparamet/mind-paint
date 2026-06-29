@@ -7,6 +7,9 @@ import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
 import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
+import { isStickyLike } from '../types/editor';
+
+const STICKY_COLORS = ['#fef08a', '#bfdbfe', '#bbf7d0', '#fecdd3', '#e9d5ff'];
 
 interface TopbarProps {
   stageRef: RefObject<Konva.Stage | null>;
@@ -211,8 +214,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const selDashRaw = selectedEls[0]?.dash;
   const selDashStr = JSON.stringify(selDashRaw ?? []);
   const activeDash: StrokeDash = (Object.keys(DASH_MAP) as StrokeDash[]).find((k) => JSON.stringify(DASH_MAP[k]) === selDashStr) ?? 'solid';
-  const hasStickySelected = selectedEls.some((e) => ['sticky', 'mindNode', 'speech'].includes(e.type));
-  const STICKY_COLORS = ['#fef08a', '#bfdbfe', '#bbf7d0', '#fecdd3', '#e9d5ff'];
+  const hasStickySelected = selectedEls.some((e) => isStickyLike(e.type));
 
   const exportItems = [
     { label: 'PNG @3x', action: () => exportImage('image/png') },
@@ -339,7 +341,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
                     onClick={() => {
                       state.setFillColor(c);
                       selectedEls
-                        .filter((e) => ['sticky', 'mindNode', 'speech'].includes(e.type))
+                        .filter((e) => isStickyLike(e.type))
                         .forEach((el, i) => state.updateElement(el.id, { fill: c }, i === 0));
                     }}
                   />

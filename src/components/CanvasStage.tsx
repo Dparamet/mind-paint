@@ -6,6 +6,7 @@ import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUti
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
+import { isStickyLike } from '../types/editor';
 
 interface CanvasStageProps {
   stageRef: RefObject<Konva.Stage | null>;
@@ -177,14 +178,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     setSelectedElementId(element.id);
   }
 
-  function getPointer() {
+  function getPointer(noSnap = false) {
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition();
     if (!stage || !pointer) return null;
-    return snapPoint({
-      x: (pointer.x - stagePosition.x) / scale,
-      y: (pointer.y - stagePosition.y) / scale,
-    });
+    const raw = { x: (pointer.x - stagePosition.x) / scale, y: (pointer.y - stagePosition.y) / scale };
+    return noSnap ? raw : snapPoint(raw);
   }
 
   function pointInPolygon(px: number, py: number, pts: number[]) {
@@ -336,11 +335,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (!editingId) return;
     const id = editingId;
     const el = elements.find((e) => e.id === id);
-    const isStickyLike = el && ['sticky', 'mindNode', 'speech'].includes(el.type);
+    const stickyLike = el && isStickyLike(el.type);
     setEditingId(null);
-    if (editingText.trim()) {
+    if (editingText.trim() || stickyLike) {
       updateElement(id, { text: editingText } as Partial<CanvasElement>);
-    } else if (!isStickyLike) {
+    } else {
       deleteElement(id);
     }
   }
@@ -351,8 +350,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const id = editingId;
     setEditingId(null);
     const el = elements.find((e) => e.id === id);
-    const isStickyLike = el && ['sticky', 'mindNode', 'speech'].includes(el.type);
-    if (el && 'text' in el && !el.text && !isStickyLike) deleteElement(id);
+    if (el && 'text' in el && !el.text) deleteElement(id);
   }
 
   function handlePointerDown(event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
@@ -391,7 +389,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (!isSpacePressed) {
         setSelectedElementIds([]);
         lassoActiveRef.current = true;
-        setLassoPoints([point.x, point.y]);
+        const rawP = getPointer(true) ?? point;
+        setLassoPoints([rawP.x, rawP.y]);
       }
       return;
     }
@@ -592,7 +591,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     if (lassoActiveRef.current) {
-      const p = getPointer();
+      const p = getPointer(true);
       if (p) setLassoPoints((prev) => {
         if (prev.length >= 2) {
           const dx = p.x - prev[prev.length - 2], dy = p.y - prev[prev.length - 1];
@@ -747,7 +746,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         rotation: node.rotation(),
       });
     }
-    if (element.type === 'sticky' || element.type === 'mindNode' || element.type === 'speech') {
+    if (isStickyLike(element.type)) {
       updateElement(id, {
         x: snapValue(node.x()),
         y: snapValue(node.y()),
@@ -906,7 +905,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           )}
           {lassoPoints.length >= 4 && (
             <Line
-              points={[...lassoPoints, lassoPoints[0], lassoPoints[1]]}
+              points={lassoPoints}
               stroke="#4c7eff" strokeWidth={1.5 / scale}
               dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
               closed listening={false}
@@ -921,15 +920,16 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const left = el.x * scale + stagePosition.x;
         const top = el.y * scale + stagePosition.y;
         const w = ('width' in el ? (el as { width: number }).width : 260) * scale;
-        const fs = (el as { fontSize?: number }).fontSize ? (el as { fontSize: number }).fontSize * scale : 16;
-        const isStickyLike = ['sticky', 'mindNode', 'speech'].includes(el.type);
+        const rawFs = (el as { fontSize?: number }).fontSize;
+        const fs = rawFs != null ? rawFs * scale : 16;
+        const stickyLike = isStickyLike(el.type);
         const elH = ('height' in el ? (el as { height: number }).height : 0) * scale;
         return (
           <textarea
             key={editingId}
             autoFocus
             className="absolute z-20 resize-none font-[inherit] outline-none"
-            style={isStickyLike ? {
+            style={stickyLike ? {
               left, top,
               width: Math.max(120, w),
               height: elH || undefined,

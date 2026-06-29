@@ -117,6 +117,12 @@ export type CanvasElement =
   | MindNodeElement
   | SpeechElement;
 
+export const STICKY_LIKE_TYPES = ['sticky', 'mindNode', 'speech'] as const;
+export type StickyLikeKind = (typeof STICKY_LIKE_TYPES)[number];
+export function isStickyLike(type: string): type is StickyLikeKind {
+  return (STICKY_LIKE_TYPES as readonly string[]).includes(type);
+}
+
 export interface Layer {
   id: string;
   name: string;
