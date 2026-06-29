@@ -8,6 +8,24 @@ import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
+function pointInPolygon(px: number, py: number, pts: number[]) {
+  const n = pts.length / 2;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = pts[i * 2], yi = pts[i * 2 + 1];
+    const xj = pts[j * 2], yj = pts[j * 2 + 1];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function isElementInLasso(el: CanvasElement, pts: number[]) {
+  const b = getElementBounds(el);
+  return (
+    [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
+  ).some(([x, y]) => pointInPolygon(x, y, pts));
+}
+
 interface CanvasStageProps {
   stageRef: RefObject<Konva.Stage | null>;
 }
@@ -184,24 +202,6 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (!stage || !pointer) return null;
     const raw = { x: (pointer.x - stagePosition.x) / scale, y: (pointer.y - stagePosition.y) / scale };
     return noSnap ? raw : snapPoint(raw);
-  }
-
-  function pointInPolygon(px: number, py: number, pts: number[]) {
-    const n = pts.length / 2;
-    let inside = false;
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      const xi = pts[i * 2], yi = pts[i * 2 + 1];
-      const xj = pts[j * 2], yj = pts[j * 2 + 1];
-      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  }
-
-  function isElementInLasso(el: CanvasElement, pts: number[]) {
-    const b = getElementBounds(el);
-    return (
-      [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
-    ).some(([x, y]) => pointInPolygon(x, y, pts));
   }
 
   function snapValue(value: number) {
@@ -929,29 +929,24 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             key={editingId}
             autoFocus
             className="absolute z-20 resize-none font-[inherit] outline-none"
-            style={stickyLike ? {
-              left, top,
-              width: Math.max(120, w),
-              height: elH || undefined,
-              minHeight: elH || Math.max(48, fs * 2),
-              fontSize: fs,
-              lineHeight: 1.5,
-              padding: `${Math.max(8, 14 * scale)}px`,
-              backgroundColor: el.fill ?? '#fef08a',
-              border: `2px solid ${el.stroke ?? '#17202a'}`,
-              borderRadius: el.type === 'sticky' ? '8px' : el.type === 'mindNode' ? '42px' : '16px',
-              color: el.stroke ?? '#17202a',
-              boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
-            } : {
-              left, top,
-              width: Math.max(120, w),
-              fontSize: fs,
-              lineHeight: 1.5,
-              minHeight: Math.max(32, fs * 2),
-              border: '2px solid #0f766e',
-              borderRadius: '4px',
-              backgroundColor: 'rgba(255,255,255,0.95)',
-              padding: '4px',
+            style={{
+              left, top, width: Math.max(120, w), fontSize: fs, lineHeight: 1.5,
+              ...(stickyLike ? {
+                height: elH || undefined,
+                minHeight: elH || Math.max(48, fs * 2),
+                padding: `${Math.max(8, 14 * scale)}px`,
+                backgroundColor: el.fill ?? '#fef08a',
+                border: `2px solid ${el.stroke ?? '#17202a'}`,
+                borderRadius: el.type === 'sticky' ? '8px' : el.type === 'mindNode' ? '42px' : '16px',
+                color: el.stroke ?? '#17202a',
+                boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
+              } : {
+                minHeight: Math.max(32, fs * 2),
+                border: '2px solid #0f766e',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                padding: '4px',
+              }),
             }}
             value={editingText}
             onChange={(e) => setEditingText(e.target.value)}
