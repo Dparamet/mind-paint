@@ -50,6 +50,36 @@ describe('getElementBounds — arrow', () => {
   });
 });
 
+describe('getElementBounds — zero-size guard', () => {
+  it('rect with width=0 returns w >= 1', () => {
+    const el = { ...BASE, type: 'rect', x: 0, y: 0, width: 0, height: 0 } as CanvasElement;
+    const b = getElementBounds(el);
+    expect(b.w).toBeGreaterThanOrEqual(1);
+    expect(b.h).toBeGreaterThanOrEqual(1);
+  });
+
+  it('circle with radiusX=0 returns w >= 1', () => {
+    const el = { ...BASE, type: 'circle', x: 50, y: 50, radiusX: 0, radiusY: 0 } as CanvasElement;
+    const b = getElementBounds(el);
+    expect(b.w).toBeGreaterThanOrEqual(1);
+    expect(b.h).toBeGreaterThanOrEqual(1);
+  });
+
+  it('text with width=0 returns w >= 1', () => {
+    const el = { ...BASE, type: 'text', x: 0, y: 0, text: '', width: 0, fontSize: 0, fontFamily: 'Inter' } as CanvasElement;
+    const b = getElementBounds(el);
+    expect(b.w).toBeGreaterThanOrEqual(1);
+    expect(b.h).toBeGreaterThanOrEqual(1);
+  });
+
+  it('sticky with zero size returns w/h >= 1', () => {
+    const el = { ...BASE, type: 'sticky', x: 0, y: 0, width: 0, height: 0, text: '', fontSize: 14 } as CanvasElement;
+    const b = getElementBounds(el);
+    expect(b.w).toBeGreaterThanOrEqual(1);
+    expect(b.h).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('DASH_MAP', () => {
   it('solid maps to empty array', () => {
     expect(DASH_MAP.solid).toEqual([]);

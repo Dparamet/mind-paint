@@ -7,11 +7,11 @@ export function getElementBounds(el: CanvasElement): { x: number; y: number; w: 
     case 'sticky':
     case 'mindNode':
     case 'speech':
-      return { x: el.x, y: el.y, w: el.width, h: el.height };
+      return { x: el.x, y: el.y, w: el.width || 1, h: el.height || 1 };
     case 'circle':
-      return { x: el.x - el.radiusX, y: el.y - el.radiusY, w: el.radiusX * 2, h: el.radiusY * 2 };
+      return { x: el.x - el.radiusX, y: el.y - el.radiusY, w: el.radiusX * 2 || 1, h: el.radiusY * 2 || 1 };
     case 'text':
-      return { x: el.x, y: el.y, w: el.width, h: el.fontSize * 2 };
+      return { x: el.x, y: el.y, w: el.width || 1, h: el.fontSize * 2 || 1 };
     case 'line':
     case 'arrow': {
       const xs = el.points.filter((_, i) => i % 2 === 0);
@@ -21,6 +21,24 @@ export function getElementBounds(el: CanvasElement): { x: number; y: number; w: 
       return { x: minX, y: minY, w: Math.max(...xs) - minX || 1, h: Math.max(...ys) - minY || 1 };
     }
   }
+}
+
+export function pointInPolygon(px: number, py: number, pts: number[]) {
+  const n = pts.length / 2;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = pts[i * 2], yi = pts[i * 2 + 1];
+    const xj = pts[j * 2], yj = pts[j * 2 + 1];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export function isElementInLasso(el: CanvasElement, pts: number[]) {
+  const b = getElementBounds(el);
+  return (
+    [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
+  ).some(([x, y]) => pointInPolygon(x, y, pts));
 }
 
 export const DASH_MAP: Record<StrokeDash, number[]> = {

@@ -3,9 +3,13 @@ import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, 
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
-import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
+import { isStickyLike } from '../types/editor';
+
+
+const EMPTY_POINTS: number[] = [];
 
 interface CanvasStageProps {
   stageRef: RefObject<Konva.Stage | null>;
@@ -81,8 +85,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const isErasingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const editingCancelledRef = useRef(false);
-  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const marqueeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const marqueeKonvaRef = useRef<Konva.Rect>(null);
+  const lassoPointsRef = useRef<number[]>([]);
+  const lassoLineRef = useRef<Konva.Line>(null);
+  const lassoActiveRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
   const canEditActiveLayer = Boolean(activeLayer && activeLayer.visible && !activeLayer.locked);
@@ -175,14 +184,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     setSelectedElementId(element.id);
   }
 
-  function getPointer() {
+  function getPointer(noSnap = false) {
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition();
     if (!stage || !pointer) return null;
-    return snapPoint({
-      x: (pointer.x - stagePosition.x) / scale,
-      y: (pointer.y - stagePosition.y) / scale,
-    });
+    const raw = { x: (pointer.x - stagePosition.x) / scale, y: (pointer.y - stagePosition.y) / scale };
+    return noSnap ? raw : snapPoint(raw);
   }
 
   function snapValue(value: number) {
@@ -315,8 +322,10 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (editingCancelledRef.current) { editingCancelledRef.current = false; return; }
     if (!editingId) return;
     const id = editingId;
+    const el = elements.find((e) => e.id === id);
+    const stickyLike = el && isStickyLike(el.type);
     setEditingId(null);
-    if (editingText.trim()) {
+    if (editingText.trim() || stickyLike) {
       updateElement(id, { text: editingText } as Partial<CanvasElement>);
     } else {
       deleteElement(id);
@@ -360,6 +369,22 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (clickedStage && !isSpacePressed) {
         setSelectedElementIds([]);
         marqueeStartRef.current = point;
+        marqueeKonvaRef.current?.visible(true);
+      }
+      return;
+    }
+
+    if (tool === 'lasso') {
+      if (!isSpacePressed) {
+        setSelectedElementIds([]);
+        lassoActiveRef.current = true;
+        const rawP = getPointer(true) ?? point;
+        lassoPointsRef.current = [rawP.x, rawP.y];
+        if (lassoLineRef.current) {
+          lassoLineRef.current.points([rawP.x, rawP.y]);
+          lassoLineRef.current.visible(true);
+          lassoLineRef.current.getLayer()?.batchDraw();
+        }
       }
       return;
     }
@@ -449,59 +474,38 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (tool === 'rectangle' || tool === 'sticky' || tool === 'mindNode' || tool === 'speech') {
       if (tool === 'sticky') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'sticky',
-          x: point.x,
-          y: point.y,
-          width: 220,
-          height: 160,
-          text: 'Sticky note',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'sticky',
+          x: point.x, y: point.y, width: 220, height: 160,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       if (tool === 'mindNode') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'mindNode',
-          x: point.x,
-          y: point.y,
-          width: 220,
-          height: 84,
-          text: 'Mind node',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'mindNode',
+          x: point.x, y: point.y, width: 220, height: 84,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       if (tool === 'speech') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'speech',
-          x: point.x,
-          y: point.y,
-          width: 240,
-          height: 120,
-          text: 'Speech bubble',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'speech',
+          x: point.x, y: point.y, width: 240, height: 120,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       addElement({
@@ -580,11 +584,33 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (lassoActiveRef.current) {
+      const p = getPointer(true);
+      if (p) {
+        const prev = lassoPointsRef.current;
+        if (prev.length >= 2) {
+          const dx = p.x - prev[prev.length - 2], dy = p.y - prev[prev.length - 1];
+          if (dx * dx + dy * dy < 9) return;
+        }
+        prev.push(p.x, p.y);
+        if (lassoLineRef.current) {
+          lassoLineRef.current.points(prev);
+          lassoLineRef.current.getLayer()?.batchDraw();
+        }
+      }
+      return;
+    }
+
     if (marqueeStartRef.current && tool === 'select') {
       const mp = getPointer();
       if (mp) {
         const start = marqueeStartRef.current;
-        setMarquee({ x: Math.min(start.x, mp.x), y: Math.min(start.y, mp.y), w: Math.abs(mp.x - start.x), h: Math.abs(mp.y - start.y) });
+        const m = { x: Math.min(start.x, mp.x), y: Math.min(start.y, mp.y), w: Math.abs(mp.x - start.x), h: Math.abs(mp.y - start.y) };
+        marqueeRef.current = m;
+        if (marqueeKonvaRef.current) {
+          marqueeKonvaRef.current.setAttrs({ x: m.x, y: m.y, width: m.w, height: m.h });
+          marqueeKonvaRef.current.getLayer()?.batchDraw();
+        }
       }
       return;
     }
@@ -617,16 +643,35 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function handleMouseUp() {
-    if (marquee) {
-      if (marquee.w > 4 || marquee.h > 4) {
-        const { x, y, w, h } = marquee;
+    if (lassoActiveRef.current) {
+      lassoActiveRef.current = false;
+      const pts = lassoPointsRef.current;
+      if (pts.length >= 6) {
+        const selected = elements.filter((el) => isElementInLasso(el, pts));
+        if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
+      }
+      lassoPointsRef.current = [];
+      if (lassoLineRef.current) {
+        lassoLineRef.current.visible(false);
+        lassoLineRef.current.points(EMPTY_POINTS);
+        lassoLineRef.current.getLayer()?.batchDraw();
+      }
+    }
+    if (marqueeRef.current) {
+      const m = marqueeRef.current;
+      if (m.w > 4 || m.h > 4) {
+        const { x, y, w, h } = m;
         const selected = elements.filter((el) => {
           const b = getElementBounds(el);
           return b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y;
         });
         if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
       }
-      setMarquee(null);
+      marqueeRef.current = null;
+      if (marqueeKonvaRef.current) {
+        marqueeKonvaRef.current.visible(false);
+        marqueeKonvaRef.current.getLayer()?.batchDraw();
+      }
     }
     marqueeStartRef.current = null;
     drawingId.current = null;
@@ -716,7 +761,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         rotation: node.rotation(),
       });
     }
-    if (element.type === 'sticky' || element.type === 'mindNode' || element.type === 'speech') {
+    if (isStickyLike(element.type)) {
       updateElement(id, {
         x: snapValue(node.x()),
         y: snapValue(node.y()),
@@ -865,14 +910,20 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         ))}
         <KonvaLayer>
           <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
-          {marquee && (
-            <Rect
-              x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h}
-              stroke="#4c7eff" strokeWidth={1 / scale}
-              dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
-              listening={false}
-            />
-          )}
+          <Rect
+            ref={marqueeKonvaRef}
+            visible={false} x={0} y={0} width={0} height={0}
+            stroke="#4c7eff" strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            listening={false}
+          />
+          <Line
+            ref={lassoLineRef}
+            visible={false} points={EMPTY_POINTS}
+            stroke="#4c7eff" strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            closed listening={false}
+          />
         </KonvaLayer>
       </Stage>
 
@@ -881,14 +932,35 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         if (!el || !('text' in el)) return null;
         const left = el.x * scale + stagePosition.x;
         const top = el.y * scale + stagePosition.y;
-        const w = ('width' in el ? el.width : 260) * scale;
-        const fs = el.fontSize * scale;
+        const w = ('width' in el ? (el as { width: number }).width : 260) * scale;
+        const rawFs = (el as { fontSize?: number }).fontSize;
+        const fs = rawFs != null ? rawFs * scale : 16;
+        const stickyLike = isStickyLike(el.type);
+        const elH = ('height' in el ? (el as { height: number }).height : 0) * scale;
         return (
           <textarea
             key={editingId}
             autoFocus
-            className="absolute z-20 resize-none rounded border-2 border-accent bg-white/95 p-1 font-[inherit] outline-none"
-            style={{ left, top, width: Math.max(120, w), fontSize: fs, lineHeight: 1.5, minHeight: Math.max(32, fs * 2) }}
+            className="absolute z-20 resize-none font-[inherit] outline-none"
+            style={{
+              left, top, width: Math.max(120, w), fontSize: fs, lineHeight: 1.5,
+              ...(stickyLike ? {
+                height: elH || undefined,
+                minHeight: elH || Math.max(48, fs * 2),
+                padding: `${Math.max(8, 14 * scale)}px`,
+                backgroundColor: el.fill ?? '#fef08a',
+                border: `2px solid ${el.stroke ?? '#17202a'}`,
+                borderRadius: el.type === 'sticky' ? '8px' : el.type === 'mindNode' ? '42px' : '16px',
+                color: el.stroke ?? '#17202a',
+                boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
+              } : {
+                minHeight: Math.max(32, fs * 2),
+                border: '2px solid #0f766e',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                padding: '4px',
+              }),
+            }}
             value={editingText}
             onChange={(e) => setEditingText(e.target.value)}
             onBlur={commitEdit}

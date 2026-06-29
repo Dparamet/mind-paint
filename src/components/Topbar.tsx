@@ -1,12 +1,15 @@
 import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
 import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
+import { isStickyLike } from '../types/editor';
+
+const STICKY_COLORS = ['#fef08a', '#bfdbfe', '#bbf7d0', '#fecdd3', '#e9d5ff'];
 
 interface TopbarProps {
   stageRef: RefObject<Konva.Stage | null>;
@@ -22,7 +25,10 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
   const canAddImage = activeLayer?.visible && !activeLayer.locked;
 
-  const selectedEls = state.elements.filter((e) => state.selectedElementIds.includes(e.id));
+  const selectedEls = useMemo(() => {
+    const idSet = new Set(state.selectedElementIds);
+    return state.elements.filter((e) => idSet.has(e.id));
+  }, [state.elements, state.selectedElementIds]);
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;
@@ -211,6 +217,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const selDashRaw = selectedEls[0]?.dash;
   const selDashStr = JSON.stringify(selDashRaw ?? []);
   const activeDash: StrokeDash = (Object.keys(DASH_MAP) as StrokeDash[]).find((k) => JSON.stringify(DASH_MAP[k]) === selDashStr) ?? 'solid';
+  const hasStickySelected = selectedEls.some((e) => isStickyLike(e.type));
 
   const exportItems = [
     { label: 'PNG @3x', action: () => exportImage('image/png') },
@@ -322,6 +329,29 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
               </button>
             ))}
           </div>
+          {hasStickySelected && (
+            <>
+              <div className="h-4 w-px bg-line" />
+              <span className="text-[10px] font-medium text-ink/60">Note</span>
+              <div className="flex items-center gap-1">
+                {STICKY_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    title={c}
+                    aria-label={`Note color ${c}`}
+                    className="h-5 w-5 rounded border border-line shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] transition hover:border-accent"
+                    style={{ backgroundColor: c }}
+                    onClick={() => {
+                      state.setFillColor(c);
+                      selectedEls
+                        .filter((e) => isStickyLike(e.type))
+                        .forEach((el, i) => state.updateElement(el.id, { fill: c }, i === 0));
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

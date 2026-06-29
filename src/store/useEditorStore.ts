@@ -32,6 +32,7 @@ const defaultSettings: EditorSettings = {
   strokeDash: 'solid',
   shortcuts: {
     v: 'select',
+    l: 'lasso',
     p: 'pen',
     e: 'eraser',
     r: 'rectangle',
