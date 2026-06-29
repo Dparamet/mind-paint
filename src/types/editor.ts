@@ -1,5 +1,6 @@
 export type Tool =
   | 'select'
+  | 'lasso'
   | 'pen'
   | 'pencil'
   | 'eraser'

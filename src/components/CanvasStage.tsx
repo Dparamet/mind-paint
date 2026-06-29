@@ -83,6 +83,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const editingCancelledRef = useRef(false);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [lassoPoints, setLassoPoints] = useState<number[]>([]);
+  const lassoActiveRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
   const canEditActiveLayer = Boolean(activeLayer && activeLayer.visible && !activeLayer.locked);
@@ -183,6 +185,24 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       x: (pointer.x - stagePosition.x) / scale,
       y: (pointer.y - stagePosition.y) / scale,
     });
+  }
+
+  function pointInPolygon(px: number, py: number, pts: number[]) {
+    const n = pts.length / 2;
+    let inside = false;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const xi = pts[i * 2], yi = pts[i * 2 + 1];
+      const xj = pts[j * 2], yj = pts[j * 2 + 1];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  function isElementInLasso(el: CanvasElement, pts: number[]) {
+    const b = getElementBounds(el);
+    return (
+      [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
+    ).some(([x, y]) => pointInPolygon(x, y, pts));
   }
 
   function snapValue(value: number) {
@@ -315,10 +335,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (editingCancelledRef.current) { editingCancelledRef.current = false; return; }
     if (!editingId) return;
     const id = editingId;
+    const el = elements.find((e) => e.id === id);
+    const isStickyLike = el && ['sticky', 'mindNode', 'speech'].includes(el.type);
     setEditingId(null);
     if (editingText.trim()) {
       updateElement(id, { text: editingText } as Partial<CanvasElement>);
-    } else {
+    } else if (!isStickyLike) {
       deleteElement(id);
     }
   }
@@ -329,7 +351,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const id = editingId;
     setEditingId(null);
     const el = elements.find((e) => e.id === id);
-    if (el && 'text' in el && !el.text) deleteElement(id);
+    const isStickyLike = el && ['sticky', 'mindNode', 'speech'].includes(el.type);
+    if (el && 'text' in el && !el.text && !isStickyLike) deleteElement(id);
   }
 
   function handlePointerDown(event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
@@ -360,6 +383,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (clickedStage && !isSpacePressed) {
         setSelectedElementIds([]);
         marqueeStartRef.current = point;
+      }
+      return;
+    }
+
+    if (tool === 'lasso') {
+      if (!isSpacePressed) {
+        setSelectedElementIds([]);
+        lassoActiveRef.current = true;
+        setLassoPoints([point.x, point.y]);
       }
       return;
     }
@@ -449,59 +481,38 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (tool === 'rectangle' || tool === 'sticky' || tool === 'mindNode' || tool === 'speech') {
       if (tool === 'sticky') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'sticky',
-          x: point.x,
-          y: point.y,
-          width: 220,
-          height: 160,
-          text: 'Sticky note',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'sticky',
+          x: point.x, y: point.y, width: 220, height: 160,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       if (tool === 'mindNode') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'mindNode',
-          x: point.x,
-          y: point.y,
-          width: 220,
-          height: 84,
-          text: 'Mind node',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'mindNode',
+          x: point.x, y: point.y, width: 220, height: 84,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       if (tool === 'speech') {
         addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'speech',
-          x: point.x,
-          y: point.y,
-          width: 240,
-          height: 120,
-          text: 'Speech bubble',
-          fontSize,
-          stroke: strokeColor,
-          fill: fillColor,
-          strokeWidth: 2,
+          id, layerId: activeLayerId, type: 'speech',
+          x: point.x, y: point.y, width: 240, height: 120,
+          text: '', fontSize, stroke: strokeColor, fill: fillColor, strokeWidth: 2,
         });
         drawingId.current = null;
         setSelectedElementId(id);
+        setEditingId(id);
+        setEditingText('');
         return;
       }
       addElement({
@@ -580,6 +591,18 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (lassoActiveRef.current) {
+      const p = getPointer();
+      if (p) setLassoPoints((prev) => {
+        if (prev.length >= 2) {
+          const dx = p.x - prev[prev.length - 2], dy = p.y - prev[prev.length - 1];
+          if (dx * dx + dy * dy < 9) return prev;
+        }
+        return [...prev, p.x, p.y];
+      });
+      return;
+    }
+
     if (marqueeStartRef.current && tool === 'select') {
       const mp = getPointer();
       if (mp) {
@@ -617,6 +640,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function handleMouseUp() {
+    if (lassoActiveRef.current) {
+      lassoActiveRef.current = false;
+      if (lassoPoints.length >= 6) {
+        const selected = elements.filter((el) => isElementInLasso(el, lassoPoints));
+        if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
+      }
+      setLassoPoints([]);
+    }
     if (marquee) {
       if (marquee.w > 4 || marquee.h > 4) {
         const { x, y, w, h } = marquee;
@@ -873,6 +904,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
               listening={false}
             />
           )}
+          {lassoPoints.length >= 4 && (
+            <Line
+              points={[...lassoPoints, lassoPoints[0], lassoPoints[1]]}
+              stroke="#4c7eff" strokeWidth={1.5 / scale}
+              dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+              closed listening={false}
+            />
+          )}
         </KonvaLayer>
       </Stage>
 
@@ -881,14 +920,39 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         if (!el || !('text' in el)) return null;
         const left = el.x * scale + stagePosition.x;
         const top = el.y * scale + stagePosition.y;
-        const w = ('width' in el ? el.width : 260) * scale;
-        const fs = el.fontSize * scale;
+        const w = ('width' in el ? (el as { width: number }).width : 260) * scale;
+        const fs = (el as { fontSize?: number }).fontSize ? (el as { fontSize: number }).fontSize * scale : 16;
+        const isStickyLike = ['sticky', 'mindNode', 'speech'].includes(el.type);
+        const elH = ('height' in el ? (el as { height: number }).height : 0) * scale;
         return (
           <textarea
             key={editingId}
             autoFocus
-            className="absolute z-20 resize-none rounded border-2 border-accent bg-white/95 p-1 font-[inherit] outline-none"
-            style={{ left, top, width: Math.max(120, w), fontSize: fs, lineHeight: 1.5, minHeight: Math.max(32, fs * 2) }}
+            className="absolute z-20 resize-none font-[inherit] outline-none"
+            style={isStickyLike ? {
+              left, top,
+              width: Math.max(120, w),
+              height: elH || undefined,
+              minHeight: elH || Math.max(48, fs * 2),
+              fontSize: fs,
+              lineHeight: 1.5,
+              padding: `${Math.max(8, 14 * scale)}px`,
+              backgroundColor: el.fill ?? '#fef08a',
+              border: `2px solid ${el.stroke ?? '#17202a'}`,
+              borderRadius: el.type === 'sticky' ? '8px' : el.type === 'mindNode' ? '42px' : '16px',
+              color: el.stroke ?? '#17202a',
+              boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
+            } : {
+              left, top,
+              width: Math.max(120, w),
+              fontSize: fs,
+              lineHeight: 1.5,
+              minHeight: Math.max(32, fs * 2),
+              border: '2px solid #0f766e',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(255,255,255,0.95)',
+              padding: '4px',
+            }}
             value={editingText}
             onChange={(e) => setEditingText(e.target.value)}
             onBlur={commitEdit}
