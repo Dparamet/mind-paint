@@ -100,9 +100,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const isErasingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const editingCancelledRef = useRef(false);
-  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [lassoPoints, setLassoPoints] = useState<number[]>([]);
+  const marqueeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const marqueeKonvaRef = useRef<Konva.Rect>(null);
+  const lassoPointsRef = useRef<number[]>([]);
+  const lassoLineRef = useRef<Konva.Line>(null);
   const lassoActiveRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
@@ -390,7 +393,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         setSelectedElementIds([]);
         lassoActiveRef.current = true;
         const rawP = getPointer(true) ?? point;
-        setLassoPoints([rawP.x, rawP.y]);
+        lassoPointsRef.current = [rawP.x, rawP.y];
+        if (lassoLineRef.current) {
+          lassoLineRef.current.points([rawP.x, rawP.y]);
+          lassoLineRef.current.visible(true);
+          lassoLineRef.current.getLayer()?.batchDraw();
+        }
       }
       return;
     }
@@ -592,13 +600,18 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (lassoActiveRef.current) {
       const p = getPointer(true);
-      if (p) setLassoPoints((prev) => {
+      if (p) {
+        const prev = lassoPointsRef.current;
         if (prev.length >= 2) {
           const dx = p.x - prev[prev.length - 2], dy = p.y - prev[prev.length - 1];
-          if (dx * dx + dy * dy < 9) return prev;
+          if (dx * dx + dy * dy < 9) return;
         }
-        return [...prev, p.x, p.y];
-      });
+        lassoPointsRef.current = [...prev, p.x, p.y];
+        if (lassoLineRef.current) {
+          lassoLineRef.current.points(lassoPointsRef.current);
+          lassoLineRef.current.getLayer()?.batchDraw();
+        }
+      }
       return;
     }
 
@@ -606,7 +619,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       const mp = getPointer();
       if (mp) {
         const start = marqueeStartRef.current;
-        setMarquee({ x: Math.min(start.x, mp.x), y: Math.min(start.y, mp.y), w: Math.abs(mp.x - start.x), h: Math.abs(mp.y - start.y) });
+        const m = { x: Math.min(start.x, mp.x), y: Math.min(start.y, mp.y), w: Math.abs(mp.x - start.x), h: Math.abs(mp.y - start.y) };
+        marqueeRef.current = m;
+        if (marqueeKonvaRef.current) {
+          marqueeKonvaRef.current.setAttrs({ x: m.x, y: m.y, width: m.w, height: m.h, visible: true });
+          marqueeKonvaRef.current.getLayer()?.batchDraw();
+        }
       }
       return;
     }
@@ -641,22 +659,33 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   function handleMouseUp() {
     if (lassoActiveRef.current) {
       lassoActiveRef.current = false;
-      if (lassoPoints.length >= 6) {
-        const selected = elements.filter((el) => isElementInLasso(el, lassoPoints));
+      const pts = lassoPointsRef.current;
+      if (pts.length >= 6) {
+        const selected = elements.filter((el) => isElementInLasso(el, pts));
         if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
       }
-      setLassoPoints([]);
+      lassoPointsRef.current = [];
+      if (lassoLineRef.current) {
+        lassoLineRef.current.visible(false);
+        lassoLineRef.current.points([]);
+        lassoLineRef.current.getLayer()?.batchDraw();
+      }
     }
-    if (marquee) {
-      if (marquee.w > 4 || marquee.h > 4) {
-        const { x, y, w, h } = marquee;
+    if (marqueeRef.current) {
+      const m = marqueeRef.current;
+      if (m.w > 4 || m.h > 4) {
+        const { x, y, w, h } = m;
         const selected = elements.filter((el) => {
           const b = getElementBounds(el);
           return b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y;
         });
         if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
       }
-      setMarquee(null);
+      marqueeRef.current = null;
+      if (marqueeKonvaRef.current) {
+        marqueeKonvaRef.current.visible(false);
+        marqueeKonvaRef.current.getLayer()?.batchDraw();
+      }
     }
     marqueeStartRef.current = null;
     drawingId.current = null;
@@ -895,22 +924,20 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         ))}
         <KonvaLayer>
           <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
-          {marquee && (
-            <Rect
-              x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h}
-              stroke="#4c7eff" strokeWidth={1 / scale}
-              dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
-              listening={false}
-            />
-          )}
-          {lassoPoints.length >= 4 && (
-            <Line
-              points={lassoPoints}
-              stroke="#4c7eff" strokeWidth={1.5 / scale}
-              dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
-              closed listening={false}
-            />
-          )}
+          <Rect
+            ref={marqueeKonvaRef}
+            visible={false} x={0} y={0} width={0} height={0}
+            stroke="#4c7eff" strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            listening={false}
+          />
+          <Line
+            ref={lassoLineRef}
+            visible={false} points={[]}
+            stroke="#4c7eff" strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            closed listening={false}
+          />
         </KonvaLayer>
       </Stage>
 

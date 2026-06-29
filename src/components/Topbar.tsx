@@ -1,6 +1,6 @@
 import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
@@ -25,7 +25,10 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
   const canAddImage = activeLayer?.visible && !activeLayer.locked;
 
-  const selectedEls = state.elements.filter((e) => state.selectedElementIds.includes(e.id));
+  const selectedEls = useMemo(
+    () => state.elements.filter((e) => state.selectedElementIds.includes(e.id)),
+    [state.elements, state.selectedElementIds],
+  );
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;
