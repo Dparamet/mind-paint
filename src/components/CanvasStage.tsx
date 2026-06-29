@@ -3,28 +3,11 @@ import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, 
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
-import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
-function pointInPolygon(px: number, py: number, pts: number[]) {
-  const n = pts.length / 2;
-  let inside = false;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = pts[i * 2], yi = pts[i * 2 + 1];
-    const xj = pts[j * 2], yj = pts[j * 2 + 1];
-    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-function isElementInLasso(el: CanvasElement, pts: number[]) {
-  const b = getElementBounds(el);
-  return (
-    [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
-  ).some(([x, y]) => pointInPolygon(x, y, pts));
-}
 
 const EMPTY_POINTS: number[] = [];
 
