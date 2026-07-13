@@ -35,6 +35,8 @@ export interface BaseElement {
   fill?: string;
   strokeWidth?: number;
   dash?: number[];
+  /** Sticky annotation attached to the element (shown as a 💬 badge) */
+  comment?: string;
 }
 
 export interface LineElement extends BaseElement {
@@ -104,6 +106,8 @@ export interface ImageElement extends BaseElement {
   src: string;
   width: number;
   height: number;
+  /** Flood-fill raster: non-interactive background paint, excluded from selection */
+  isFill?: boolean;
 }
 
 export type CanvasElement =

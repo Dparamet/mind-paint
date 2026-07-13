@@ -5,7 +5,7 @@ import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
-import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
+import type { CanvasElement, CircleElement, ImageElement, RectElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
 
@@ -29,7 +29,13 @@ function useLoadedImage(src: string) {
 
 function ImageNode({ element, selectable }: { element: ImageElement; selectable: boolean }) {
   const image = useLoadedImage(element.src);
-  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable} />;
+  // Fill rasters are background paint: never hit-tested, otherwise the
+  // full-viewport image swallows every stage click (breaks marquee/lasso)
+  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable && !element.isFill} listening={!element.isFill} />;
+}
+
+function isSelectable(el: CanvasElement) {
+  return !(el.type === 'image' && el.isFill);
 }
 
 function isMouseEvent(event: MouseEvent | TouchEvent): event is MouseEvent {
@@ -82,6 +88,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const editingCancelledRef = useRef(false);
@@ -92,6 +100,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const lassoPointsRef = useRef<number[]>([]);
   const lassoLineRef = useRef<Konva.Line>(null);
   const lassoActiveRef = useRef(false);
+  // Group move: drag inside an existing selection moves it instead of re-selecting
+  const groupMoveRef = useRef<{ start: { x: number; y: number }; origins: { id: string; x: number; y: number }[]; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
   const canEditActiveLayer = Boolean(activeLayer && activeLayer.visible && !activeLayer.locked);
@@ -162,6 +173,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       fillElementIdRef.current = null;
     }
   }, [elements]);
+
+  // Reset fill accumulation on pan/zoom: a reused fill element keeps stale
+  // x/y/width/height, so a new viewport must start a fresh fill element
+  useEffect(() => {
+    fillCanvasRef.current = null;
+    fillElementIdRef.current = null;
+  }, [scale, stagePosition, stageSize]);
 
   async function insertImage(src: string, point: { x: number; y: number }) {
     const size = await dataUrlToImageSize(src);
@@ -297,6 +315,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         layerId: activeLayerId,
         type: 'image',
         src: dataUrl,
+        isFill: true,
         x: worldX,
         y: worldY,
         width: W / scale,
@@ -363,6 +382,25 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     const point = getPointer();
     if (!point) return;
+
+    // Pointer-down inside the current selection starts a group move, not a new selection
+    if ((tool === 'select' || tool === 'lasso') && !isSpacePressed && selectedElementIds.length > 0) {
+      let hit = event.target.id();
+      if (!elements.find((e) => e.id === hit)) hit = (event.target.parent as Konva.Node | null)?.id() ?? '';
+      // select tool with a single selection keeps Konva's own drag
+      if (selectedElementIds.includes(hit) && (tool === 'lasso' || selectedElementIds.length > 1)) {
+        const raw = getPointer(true) ?? point;
+        const editable = new Set(layers.filter((l) => l.visible && !l.locked).map(l => l.id));
+        groupMoveRef.current = {
+          start: raw,
+          origins: elements
+            .filter((e) => selectedElementIds.includes(e.id) && editable.has(e.layerId))
+            .map((e) => ({ id: e.id, x: e.x, y: e.y })),
+          moved: false,
+        };
+        return;
+      }
+    }
 
     const clickedStage = event.target === event.target.getStage();
     if (tool === 'select') {
@@ -584,6 +622,22 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (groupMoveRef.current) {
+      const p = getPointer(true);
+      if (p) {
+        const g = groupMoveRef.current;
+        const dx = p.x - g.start.x;
+        const dy = p.y - g.start.y;
+        // small threshold so a plain click (select) doesn't count as a move
+        if (!g.moved && dx * dx + dy * dy < 4) return;
+        const first = !g.moved;
+        g.moved = true;
+        // history snapshot only on the very first tracked update (pre-move positions)
+        g.origins.forEach((o, i) => updateElement(o.id, { x: o.x + dx, y: o.y + dy }, first && i === 0));
+      }
+      return;
+    }
+
     if (lassoActiveRef.current) {
       const p = getPointer(true);
       if (p) {
@@ -643,11 +697,23 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function handleMouseUp() {
+    if (groupMoveRef.current) {
+      const g = groupMoveRef.current;
+      if (g.moved) {
+        suppressClickRef.current = true; // Konva fires click after mouseup; don't collapse selection
+        for (const o of g.origins) {
+          const el = elements.find((e) => e.id === o.id);
+          if (el) updateElement(o.id, { x: snapValue(el.x), y: snapValue(el.y) }, false);
+        }
+      }
+      groupMoveRef.current = null;
+      return;
+    }
     if (lassoActiveRef.current) {
       lassoActiveRef.current = false;
       const pts = lassoPointsRef.current;
       if (pts.length >= 6) {
-        const selected = elements.filter((el) => isElementInLasso(el, pts));
+        const selected = elements.filter((el) => isSelectable(el) && isElementInLasso(el, pts));
         if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
       }
       lassoPointsRef.current = [];
@@ -662,6 +728,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (m.w > 4 || m.h > 4) {
         const { x, y, w, h } = m;
         const selected = elements.filter((el) => {
+          if (!isSelectable(el)) return false;
           const b = getElementBounds(el);
           return b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y;
         });
@@ -765,8 +832,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       updateElement(id, {
         x: snapValue(node.x()),
         y: snapValue(node.y()),
-        width: Math.max(80, element.width * scaleX),
-        height: Math.max(48, element.height * scaleY),
+        width: Math.max(80, (element as StickyElement).width * scaleX),
+        height: Math.max(48, (element as StickyElement).height * scaleY),
         rotation: node.rotation(),
       });
     }
@@ -792,8 +859,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       fill: element.fill,
       strokeWidth: element.strokeWidth,
       dash: element.dash?.length ? element.dash : undefined,
-      draggable: canMoveElement,
+      draggable: canMoveElement && !(selectedElementIds.length > 1 && selectedElementIds.includes(element.id)),
       onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         if (tool === 'fill') return; // handled by handlePointerDown (mousedown)
         if (tool === 'select') {
           if (event.evt.shiftKey) toggleSelectedElementId(element.id);
@@ -972,19 +1040,89 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         );
       })()}
 
+      {/* Comment badges on elements that have annotations */}
+      {elements.filter((el) => el.comment && el.id !== commentingId && layers.find((l) => l.id === el.layerId)?.visible).map((el) => {
+        const b = getElementBounds(el);
+        return (
+          <button
+            key={`comment-${el.id}`}
+            className="absolute z-10 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-panel text-xs shadow-soft hover:border-accent"
+            style={{ left: (b.x + b.w) * scale + stagePosition.x - 8, top: b.y * scale + stagePosition.y - 20 }}
+            title={el.comment}
+            aria-label="Edit comment"
+            onClick={() => { setCommentingId(el.id); setCommentDraft(el.comment ?? ''); }}
+          >
+            💬
+          </button>
+        );
+      })}
+
+      {commentingId && (() => {
+        const el = elements.find((e) => e.id === commentingId);
+        if (!el) return null;
+        const b = getElementBounds(el);
+        const save = () => {
+          updateElement(commentingId, { comment: commentDraft.trim() || undefined } as Partial<CanvasElement>);
+          setCommentingId(null);
+        };
+        return (
+          <div
+            className="absolute z-20 w-56 rounded-md border border-line bg-panel p-2 shadow-soft"
+            style={{ left: (b.x + b.w) * scale + stagePosition.x + 8, top: b.y * scale + stagePosition.y }}
+          >
+            <textarea
+              autoFocus
+              className="h-20 w-full resize-none rounded border border-line bg-white p-2 text-sm outline-none"
+              placeholder="Add a comment…"
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { e.preventDefault(); setCommentingId(null); }
+                else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+              }}
+            />
+            <div className="mt-1 flex justify-end gap-2 text-xs">
+              <button
+                className="rounded border border-line px-2 py-1 hover:border-coral hover:text-coral"
+                onClick={() => { updateElement(commentingId, { comment: undefined } as Partial<CanvasElement>); setCommentingId(null); }}
+              >
+                Delete
+              </button>
+              <button className="rounded border border-line px-2 py-1 hover:border-accent" onClick={save}>
+                Save
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {selectedElementId && (
-        <button
-          className="absolute bottom-4 left-4 rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
-          onClick={() => {
-            if (selectedElementIds.length) {
-              deleteSelectedElements();
-              return;
-            }
-            deleteElement(selectedElementId);
-          }}
-        >
-          Delete selected
-        </button>
+        <div className="absolute bottom-4 left-4 flex gap-2">
+          <button
+            className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
+            onClick={() => {
+              if (selectedElementIds.length) {
+                deleteSelectedElements();
+                return;
+              }
+              deleteElement(selectedElementId);
+            }}
+          >
+            Delete selected
+          </button>
+          {selectedElementIds.length <= 1 && (
+            <button
+              className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-accent"
+              onClick={() => {
+                const el = elements.find((e) => e.id === selectedElementId);
+                setCommentingId(selectedElementId);
+                setCommentDraft(el?.comment ?? '');
+              }}
+            >
+              💬 Comment
+            </button>
+          )}
+        </div>
       )}
     </main>
   );
