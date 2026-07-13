@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
-import type { CanvasElement, CircleElement, ImageElement, RectElement, TextElement } from '../types/editor';
+import type { CanvasElement, CircleElement, ImageElement, RectElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
 
@@ -19,9 +20,18 @@ function useLoadedImage(src: string) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const img = new Image();
-    img.onload = () => setImage(img);
+    img.onload = () => {
+      if (!cancelled) setImage(img);
+    };
+    img.onerror = () => {
+      if (!cancelled) setImage(null);
+    };
     img.src = src;
+    return () => {
+      cancelled = true;
+    };
   }, [src]);
 
   return image;
@@ -29,7 +39,13 @@ function useLoadedImage(src: string) {
 
 function ImageNode({ element, selectable }: { element: ImageElement; selectable: boolean }) {
   const image = useLoadedImage(element.src);
-  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable} />;
+  // Fill rasters are background paint: never hit-tested, otherwise the
+  // full-viewport image swallows every stage click (breaks marquee/lasso)
+  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable && !element.isFill} listening={!element.isFill} />;
+}
+
+function isSelectable(el: CanvasElement) {
+  return !(el.type === 'image' && el.isFill);
 }
 
 function isMouseEvent(event: MouseEvent | TouchEvent): event is MouseEvent {
@@ -67,7 +83,40 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteElement,
     deleteSelectedElements,
     strokeDash,
-  } = useEditorStore();
+    // useShallow: only re-render when a picked slice changes, not on every store write
+  } = useEditorStore(
+    useShallow((s) => ({
+      width: s.width,
+      height: s.height,
+      layers: s.layers,
+      elements: s.elements,
+      tool: s.tool,
+      activeLayerId: s.activeLayerId,
+      strokeColor: s.strokeColor,
+      fillColor: s.fillColor,
+      brushSize: s.brushSize,
+      showGrid: s.showGrid,
+      snapToGrid: s.snapToGrid,
+      gridSize: s.gridSize,
+      fontSize: s.fontSize,
+      fontFamily: s.fontFamily,
+      bold: s.bold,
+      italic: s.italic,
+      textAlign: s.textAlign,
+      rightClickEraser: s.rightClickEraser,
+      selectedElementId: s.selectedElementId,
+      selectedElementIds: s.selectedElementIds,
+      setSelectedElementId: s.setSelectedElementId,
+      setSelectedElementIds: s.setSelectedElementIds,
+      toggleSelectedElementId: s.toggleSelectedElementId,
+      addElement: s.addElement,
+      prependElement: s.prependElement,
+      updateElement: s.updateElement,
+      deleteElement: s.deleteElement,
+      deleteSelectedElements: s.deleteSelectedElements,
+      strokeDash: s.strokeDash,
+    })),
+  );
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
   const drawingId = useRef<string | null>(null);
@@ -82,8 +131,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
+  // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
+  // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
+  const drawDraftRef = useRef<{
+    kind: 'free' | 'segment' | 'rect' | 'circle';
+    points?: number[];
+    patch: Partial<CanvasElement> | null;
+  } | null>(null);
   const editingCancelledRef = useRef(false);
   // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -92,6 +150,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const lassoPointsRef = useRef<number[]>([]);
   const lassoLineRef = useRef<Konva.Line>(null);
   const lassoActiveRef = useRef(false);
+  // Group move: drag inside an existing selection moves it instead of re-selecting
+  const groupMoveRef = useRef<{ start: { x: number; y: number }; origins: { id: string; x: number; y: number }[]; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
   const canEditActiveLayer = Boolean(activeLayer && activeLayer.visible && !activeLayer.locked);
@@ -129,6 +190,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
+        // Don't hijack space while typing in the inline textarea / any input
+        const target = event.target as HTMLElement | null;
+        if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT') return;
         event.preventDefault();
         setIsSpacePressed(true);
       }
@@ -162,6 +226,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       fillElementIdRef.current = null;
     }
   }, [elements]);
+
+  // Reset fill accumulation on pan/zoom: a reused fill element keeps stale
+  // x/y/width/height, so a new viewport must start a fresh fill element
+  useEffect(() => {
+    fillCanvasRef.current = null;
+    fillElementIdRef.current = null;
+  }, [scale, stagePosition, stageSize]);
 
   async function insertImage(src: string, point: { x: number; y: number }) {
     const size = await dataUrlToImageSize(src);
@@ -297,6 +368,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         layerId: activeLayerId,
         type: 'image',
         src: dataUrl,
+        isFill: true,
         x: worldX,
         y: worldY,
         width: W / scale,
@@ -364,6 +436,25 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const point = getPointer();
     if (!point) return;
 
+    // Pointer-down inside the current selection starts a group move, not a new selection
+    if ((tool === 'select' || tool === 'lasso') && !isSpacePressed && selectedElementIds.length > 0) {
+      let hit = event.target.id();
+      if (!elements.find((e) => e.id === hit)) hit = (event.target.parent as Konva.Node | null)?.id() ?? '';
+      // select tool with a single selection keeps Konva's own drag
+      if (selectedElementIds.includes(hit) && (tool === 'lasso' || selectedElementIds.length > 1)) {
+        const raw = getPointer(true) ?? point;
+        const editable = new Set(layers.filter((l) => l.visible && !l.locked).map(l => l.id));
+        groupMoveRef.current = {
+          start: raw,
+          origins: elements
+            .filter((e) => selectedElementIds.includes(e.id) && editable.has(e.layerId))
+            .map((e) => ({ id: e.id, x: e.x, y: e.y })),
+          moved: false,
+        };
+        return;
+      }
+    }
+
     const clickedStage = event.target === event.target.getStage();
     if (tool === 'select') {
       if (clickedStage && !isSpacePressed) {
@@ -420,6 +511,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     if (tool === 'pen' || tool === 'pencil') {
+      drawDraftRef.current = { kind: 'free', points: [point.x, point.y], patch: null };
       addElement({
         id,
         layerId: activeLayerId,
@@ -437,6 +529,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     if (tool === 'line' || tool === 'arrow') {
+      drawDraftRef.current = { kind: 'segment', points: [point.x, point.y, point.x, point.y], patch: null };
       if (tool === 'line') {
         addElement({
           id,
@@ -522,9 +615,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         dash: DASH_MAP[strokeDash],
       });
       drawStartRef.current = point;
+      drawDraftRef.current = { kind: 'rect', patch: null };
     }
 
     if (tool === 'circle') {
+      drawDraftRef.current = { kind: 'circle', points: [point.x, point.y], patch: null };
       addElement({
         id,
         layerId: activeLayerId,
@@ -584,6 +679,22 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (groupMoveRef.current) {
+      const p = getPointer(true);
+      if (p) {
+        const g = groupMoveRef.current;
+        const dx = p.x - g.start.x;
+        const dy = p.y - g.start.y;
+        // small threshold so a plain click (select) doesn't count as a move
+        if (!g.moved && dx * dx + dy * dy < 4) return;
+        const first = !g.moved;
+        g.moved = true;
+        // history snapshot only on the very first tracked update (pre-move positions)
+        g.origins.forEach((o, i) => updateElement(o.id, { x: o.x + dx, y: o.y + dy }, first && i === 0));
+      }
+      return;
+    }
+
     if (lassoActiveRef.current) {
       const p = getPointer(true);
       if (p) {
@@ -616,38 +727,57 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     const id = drawingId.current;
+    const draft = drawDraftRef.current;
     const point = getPointer();
-    if (!id || !point) return;
-    const element = elements.find((item) => item.id === id);
-    if (!element) return;
+    if (!id || !draft || !point) return;
+    const node = stageRef.current?.findOne(`#${id}`);
+    if (!node) return;
 
-    if (element.type === 'line') {
-      const isStraightLine = element.points.length === 4 && element.tension === 0;
-      updateElement(id, { points: isStraightLine ? [element.points[0], element.points[1], point.x, point.y] : [...element.points, point.x, point.y] }, false);
-    }
-    if (element.type === 'arrow') {
-      updateElement(id, { points: [element.points[0], element.points[1], point.x, point.y] }, false);
-    }
-    if (element.type === 'rect' && drawStartRef.current) {
+    if (draft.kind === 'free' && draft.points) {
+      draft.points.push(point.x, point.y);
+      (node as Konva.Line).points(draft.points);
+      draft.patch = { points: draft.points };
+    } else if (draft.kind === 'segment' && draft.points) {
+      draft.points[2] = point.x;
+      draft.points[3] = point.y;
+      (node as Konva.Line).points(draft.points);
+      draft.patch = { points: draft.points };
+    } else if (draft.kind === 'rect' && drawStartRef.current) {
       const start = drawStartRef.current;
-      updateElement(id, {
+      const attrs = {
         x: Math.min(start.x, point.x),
         y: Math.min(start.y, point.y),
         width: Math.abs(point.x - start.x),
         height: Math.abs(point.y - start.y),
-      }, false);
+      };
+      node.setAttrs(attrs);
+      draft.patch = attrs;
+    } else if (draft.kind === 'circle' && draft.points) {
+      const attrs = { radiusX: Math.abs(point.x - draft.points[0]), radiusY: Math.abs(point.y - draft.points[1]) };
+      node.setAttrs(attrs);
+      draft.patch = attrs;
     }
-    if (element.type === 'circle') {
-      updateElement(id, { radiusX: Math.abs(point.x - element.x), radiusY: Math.abs(point.y - element.y) }, false);
-    }
+    node.getLayer()?.batchDraw();
   }
 
   function handleMouseUp() {
+    if (groupMoveRef.current) {
+      const g = groupMoveRef.current;
+      if (g.moved) {
+        suppressClickRef.current = true; // Konva fires click after mouseup; don't collapse selection
+        for (const o of g.origins) {
+          const el = elements.find((e) => e.id === o.id);
+          if (el) updateElement(o.id, { x: snapValue(el.x), y: snapValue(el.y) }, false);
+        }
+      }
+      groupMoveRef.current = null;
+      return;
+    }
     if (lassoActiveRef.current) {
       lassoActiveRef.current = false;
       const pts = lassoPointsRef.current;
       if (pts.length >= 6) {
-        const selected = elements.filter((el) => isElementInLasso(el, pts));
+        const selected = elements.filter((el) => isSelectable(el) && isElementInLasso(el, pts));
         if (selected.length) setSelectedElementIds(selected.map((el) => el.id));
       }
       lassoPointsRef.current = [];
@@ -662,6 +792,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       if (m.w > 4 || m.h > 4) {
         const { x, y, w, h } = m;
         const selected = elements.filter((el) => {
+          if (!isSelectable(el)) return false;
           const b = getElementBounds(el);
           return b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y;
         });
@@ -673,6 +804,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         marqueeKonvaRef.current.getLayer()?.batchDraw();
       }
     }
+    // Single store commit for the whole drag; history point was made by addElement
+    if (drawingId.current && drawDraftRef.current?.patch) {
+      updateElement(drawingId.current, drawDraftRef.current.patch, false);
+    }
+    drawDraftRef.current = null;
     marqueeStartRef.current = null;
     drawingId.current = null;
     rightEraseId.current = null;
@@ -765,8 +901,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       updateElement(id, {
         x: snapValue(node.x()),
         y: snapValue(node.y()),
-        width: Math.max(80, element.width * scaleX),
-        height: Math.max(48, element.height * scaleY),
+        width: Math.max(80, (element as StickyElement).width * scaleX),
+        height: Math.max(48, (element as StickyElement).height * scaleY),
         rotation: node.rotation(),
       });
     }
@@ -792,8 +928,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       fill: element.fill,
       strokeWidth: element.strokeWidth,
       dash: element.dash?.length ? element.dash : undefined,
-      draggable: canMoveElement,
+      draggable: canMoveElement && !(selectedElementIds.length > 1 && selectedElementIds.includes(element.id)),
       onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         if (tool === 'fill') return; // handled by handlePointerDown (mousedown)
         if (tool === 'select') {
           if (event.evt.shiftKey) toggleSelectedElementId(element.id);
@@ -972,19 +1109,89 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         );
       })()}
 
+      {/* Comment badges on elements that have annotations */}
+      {elements.filter((el) => el.comment && el.id !== commentingId && layers.find((l) => l.id === el.layerId)?.visible).map((el) => {
+        const b = getElementBounds(el);
+        return (
+          <button
+            key={`comment-${el.id}`}
+            className="absolute z-10 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-panel text-xs shadow-soft hover:border-accent"
+            style={{ left: (b.x + b.w) * scale + stagePosition.x - 8, top: b.y * scale + stagePosition.y - 20 }}
+            title={el.comment}
+            aria-label="Edit comment"
+            onClick={() => { setCommentingId(el.id); setCommentDraft(el.comment ?? ''); }}
+          >
+            💬
+          </button>
+        );
+      })}
+
+      {commentingId && (() => {
+        const el = elements.find((e) => e.id === commentingId);
+        if (!el) return null;
+        const b = getElementBounds(el);
+        const save = () => {
+          updateElement(commentingId, { comment: commentDraft.trim() || undefined } as Partial<CanvasElement>);
+          setCommentingId(null);
+        };
+        return (
+          <div
+            className="absolute z-20 w-56 rounded-md border border-line bg-panel p-2 shadow-soft"
+            style={{ left: (b.x + b.w) * scale + stagePosition.x + 8, top: b.y * scale + stagePosition.y }}
+          >
+            <textarea
+              autoFocus
+              className="h-20 w-full resize-none rounded border border-line bg-white p-2 text-sm outline-none"
+              placeholder="Add a comment…"
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { e.preventDefault(); setCommentingId(null); }
+                else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+              }}
+            />
+            <div className="mt-1 flex justify-end gap-2 text-xs">
+              <button
+                className="rounded border border-line px-2 py-1 hover:border-coral hover:text-coral"
+                onClick={() => { updateElement(commentingId, { comment: undefined } as Partial<CanvasElement>); setCommentingId(null); }}
+              >
+                Delete
+              </button>
+              <button className="rounded border border-line px-2 py-1 hover:border-accent" onClick={save}>
+                Save
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {selectedElementId && (
-        <button
-          className="absolute bottom-4 left-4 rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
-          onClick={() => {
-            if (selectedElementIds.length) {
-              deleteSelectedElements();
-              return;
-            }
-            deleteElement(selectedElementId);
-          }}
-        >
-          Delete selected
-        </button>
+        <div className="absolute bottom-4 left-4 flex gap-2">
+          <button
+            className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
+            onClick={() => {
+              if (selectedElementIds.length) {
+                deleteSelectedElements();
+                return;
+              }
+              deleteElement(selectedElementId);
+            }}
+          >
+            Delete selected
+          </button>
+          {selectedElementIds.length <= 1 && (
+            <button
+              className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-accent"
+              onClick={() => {
+                const el = elements.find((e) => e.id === selectedElementId);
+                setCommentingId(selectedElementId);
+                setCommentDraft(el?.comment ?? '');
+              }}
+            >
+              💬 Comment
+            </button>
+          )}
+        </div>
       )}
     </main>
   );
