@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
@@ -19,9 +20,18 @@ function useLoadedImage(src: string) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const img = new Image();
-    img.onload = () => setImage(img);
+    img.onload = () => {
+      if (!cancelled) setImage(img);
+    };
+    img.onerror = () => {
+      if (!cancelled) setImage(null);
+    };
     img.src = src;
+    return () => {
+      cancelled = true;
+    };
   }, [src]);
 
   return image;
@@ -73,7 +83,40 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteElement,
     deleteSelectedElements,
     strokeDash,
-  } = useEditorStore();
+    // useShallow: only re-render when a picked slice changes, not on every store write
+  } = useEditorStore(
+    useShallow((s) => ({
+      width: s.width,
+      height: s.height,
+      layers: s.layers,
+      elements: s.elements,
+      tool: s.tool,
+      activeLayerId: s.activeLayerId,
+      strokeColor: s.strokeColor,
+      fillColor: s.fillColor,
+      brushSize: s.brushSize,
+      showGrid: s.showGrid,
+      snapToGrid: s.snapToGrid,
+      gridSize: s.gridSize,
+      fontSize: s.fontSize,
+      fontFamily: s.fontFamily,
+      bold: s.bold,
+      italic: s.italic,
+      textAlign: s.textAlign,
+      rightClickEraser: s.rightClickEraser,
+      selectedElementId: s.selectedElementId,
+      selectedElementIds: s.selectedElementIds,
+      setSelectedElementId: s.setSelectedElementId,
+      setSelectedElementIds: s.setSelectedElementIds,
+      toggleSelectedElementId: s.toggleSelectedElementId,
+      addElement: s.addElement,
+      prependElement: s.prependElement,
+      updateElement: s.updateElement,
+      deleteElement: s.deleteElement,
+      deleteSelectedElements: s.deleteSelectedElements,
+      strokeDash: s.strokeDash,
+    })),
+  );
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
   const drawingId = useRef<string | null>(null);
@@ -92,6 +135,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
+  // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
+  // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
+  const drawDraftRef = useRef<{
+    kind: 'free' | 'segment' | 'rect' | 'circle';
+    points?: number[];
+    patch: Partial<CanvasElement> | null;
+  } | null>(null);
   const editingCancelledRef = useRef(false);
   // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -140,6 +190,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
+        // Don't hijack space while typing in the inline textarea / any input
+        const target = event.target as HTMLElement | null;
+        if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT') return;
         event.preventDefault();
         setIsSpacePressed(true);
       }
@@ -458,6 +511,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     if (tool === 'pen' || tool === 'pencil') {
+      drawDraftRef.current = { kind: 'free', points: [point.x, point.y], patch: null };
       addElement({
         id,
         layerId: activeLayerId,
@@ -475,6 +529,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     if (tool === 'line' || tool === 'arrow') {
+      drawDraftRef.current = { kind: 'segment', points: [point.x, point.y, point.x, point.y], patch: null };
       if (tool === 'line') {
         addElement({
           id,
@@ -560,9 +615,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         dash: DASH_MAP[strokeDash],
       });
       drawStartRef.current = point;
+      drawDraftRef.current = { kind: 'rect', patch: null };
     }
 
     if (tool === 'circle') {
+      drawDraftRef.current = { kind: 'circle', points: [point.x, point.y], patch: null };
       addElement({
         id,
         layerId: activeLayerId,
@@ -670,30 +727,37 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     const id = drawingId.current;
+    const draft = drawDraftRef.current;
     const point = getPointer();
-    if (!id || !point) return;
-    const element = elements.find((item) => item.id === id);
-    if (!element) return;
+    if (!id || !draft || !point) return;
+    const node = stageRef.current?.findOne(`#${id}`);
+    if (!node) return;
 
-    if (element.type === 'line') {
-      const isStraightLine = element.points.length === 4 && element.tension === 0;
-      updateElement(id, { points: isStraightLine ? [element.points[0], element.points[1], point.x, point.y] : [...element.points, point.x, point.y] }, false);
-    }
-    if (element.type === 'arrow') {
-      updateElement(id, { points: [element.points[0], element.points[1], point.x, point.y] }, false);
-    }
-    if (element.type === 'rect' && drawStartRef.current) {
+    if (draft.kind === 'free' && draft.points) {
+      draft.points.push(point.x, point.y);
+      (node as Konva.Line).points(draft.points);
+      draft.patch = { points: draft.points };
+    } else if (draft.kind === 'segment' && draft.points) {
+      draft.points[2] = point.x;
+      draft.points[3] = point.y;
+      (node as Konva.Line).points(draft.points);
+      draft.patch = { points: draft.points };
+    } else if (draft.kind === 'rect' && drawStartRef.current) {
       const start = drawStartRef.current;
-      updateElement(id, {
+      const attrs = {
         x: Math.min(start.x, point.x),
         y: Math.min(start.y, point.y),
         width: Math.abs(point.x - start.x),
         height: Math.abs(point.y - start.y),
-      }, false);
+      };
+      node.setAttrs(attrs);
+      draft.patch = attrs;
+    } else if (draft.kind === 'circle' && draft.points) {
+      const attrs = { radiusX: Math.abs(point.x - draft.points[0]), radiusY: Math.abs(point.y - draft.points[1]) };
+      node.setAttrs(attrs);
+      draft.patch = attrs;
     }
-    if (element.type === 'circle') {
-      updateElement(id, { radiusX: Math.abs(point.x - element.x), radiusY: Math.abs(point.y - element.y) }, false);
-    }
+    node.getLayer()?.batchDraw();
   }
 
   function handleMouseUp() {
@@ -740,6 +804,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         marqueeKonvaRef.current.getLayer()?.batchDraw();
       }
     }
+    // Single store commit for the whole drag; history point was made by addElement
+    if (drawingId.current && drawDraftRef.current?.patch) {
+      updateElement(drawingId.current, drawDraftRef.current.patch, false);
+    }
+    drawDraftRef.current = null;
     marqueeStartRef.current = null;
     drawingId.current = null;
     rightEraseId.current = null;

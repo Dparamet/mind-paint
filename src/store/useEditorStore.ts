@@ -152,15 +152,19 @@ function pickSettings(state: EditorSettings): EditorSettings {
   };
 }
 
+// Invariant: layers/elements are immutable — every mutation replaces the array,
+// so snapshots are plain references (no structuredClone) and equality is identity.
 function snapshot(state: Pick<EditorStore, 'layers' | 'elements'>): Snapshot {
-  return {
-    layers: structuredClone(state.layers),
-    elements: structuredClone(state.elements),
-  };
+  return { layers: state.layers, elements: state.elements };
 }
 
 function snapshotsEqual(a: Snapshot, b: Snapshot) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return a.layers === b.layers && a.elements === b.elements;
+}
+
+// Single writer for selection state so selectedElementId can never desync from the array
+function selection(ids: string[]) {
+  return { selectedElementIds: ids, selectedElementId: ids[0] ?? null };
 }
 
 function withHistory(state: EditorStore) {
@@ -272,16 +276,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { shortcuts };
     }),
   setName: (name) => set({ name, updatedAt: Date.now(), saveStatus: 'dirty' }),
-  setSelectedElementId: (selectedElementId) => set({ selectedElementId, selectedElementIds: selectedElementId ? [selectedElementId] : [] }),
-  setSelectedElementIds: (selectedElementIds) =>
-    set({ selectedElementIds, selectedElementId: selectedElementIds[0] ?? null }),
+  setSelectedElementId: (id) => set(selection(id ? [id] : [])),
+  setSelectedElementIds: (ids) => set(selection(ids)),
   toggleSelectedElementId: (id) =>
-    set((state) => {
-      const selectedElementIds = state.selectedElementIds.includes(id)
-        ? state.selectedElementIds.filter((selectedId) => selectedId !== id)
-        : [...state.selectedElementIds, id];
-      return { selectedElementIds, selectedElementId: selectedElementIds[0] ?? null };
-    }),
+    set((state) =>
+      selection(
+        state.selectedElementIds.includes(id)
+          ? state.selectedElementIds.filter((selectedId) => selectedId !== id)
+          : [...state.selectedElementIds, id],
+      ),
+    ),
 
   addElement: (element) => set((state) => ({ ...withHistory(state), elements: [...state.elements, element] })),
   prependElement: (element) => set((state) => ({ ...withHistory(state), elements: [element, ...state.elements] })),
@@ -296,8 +300,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set((state) => ({
       ...withHistory(state),
       elements: state.elements.filter((element) => element.id !== id),
-      selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
-      selectedElementIds: state.selectedElementIds.filter((selectedId) => selectedId !== id),
+      ...selection(state.selectedElementIds.filter((selectedId) => selectedId !== id)),
     })),
   deleteSelectedElements: () =>
     set((state) => {
@@ -306,8 +309,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return {
         ...withHistory(state),
         elements: state.elements.filter((element) => !selected.has(element.id)),
-        selectedElementId: null,
-        selectedElementIds: [],
+        ...selection([]),
       };
     }),
   clearCanvas: () =>
@@ -316,8 +318,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       layers: [{ id: defaultLayerId, name: 'Layer 1', visible: true, locked: false }],
       elements: [],
       activeLayerId: defaultLayerId,
-      selectedElementId: null,
-      selectedElementIds: [],
+      ...selection([]),
     })),
   duplicateSelectedElements: () =>
     set((state) => {
@@ -334,8 +335,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return {
         ...withHistory(state),
         elements: [...state.elements, ...copies],
-        selectedElementId: copies[0]?.id ?? null,
-        selectedElementIds: copies.map((copy) => copy.id),
+        ...selection(copies.map((copy) => copy.id)),
       };
     }),
   moveElementForward: (id) =>
@@ -388,8 +388,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         layers,
         elements: state.elements.filter((element) => element.layerId !== id),
         activeLayerId: state.activeLayerId === id ? layers[0].id : state.activeLayerId,
-        selectedElementId: null,
-        selectedElementIds: [],
+        ...selection([]),
       };
     }),
   toggleLayerVisibility: (id) =>
@@ -416,8 +415,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         elements: previous.elements,
         history: state.history.slice(0, -1),
         future: [snapshot(state), ...state.future],
-        selectedElementId: null,
-        selectedElementIds: [],
+        ...selection([]),
         saveStatus: 'dirty',
         updatedAt: Date.now(),
       };
@@ -431,8 +429,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         elements: next.elements,
         history: [...state.history, snapshot(state)],
         future: state.future.slice(1),
-        selectedElementId: null,
-        selectedElementIds: [],
+        ...selection([]),
         saveStatus: 'dirty',
         updatedAt: Date.now(),
       };
@@ -440,7 +437,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   newProject: () => {
     const doc = createDocument();
     localStorage.setItem(lastProjectKey, doc.id);
-    set({ ...doc, activeLayerId: doc.layers[0].id, selectedElementId: null, selectedElementIds: [], history: [], future: [], saveStatus: 'dirty' });
+    set({ ...doc, activeLayerId: doc.layers[0].id, ...selection([]), history: [], future: [], saveStatus: 'dirty' });
   },
   loadProject: (project) =>
     set(() => {
@@ -448,8 +445,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return {
       ...project,
       activeLayerId: project.layers[0]?.id ?? defaultLayerId,
-      selectedElementId: null,
-      selectedElementIds: [],
+      ...selection([]),
       history: [],
       future: [],
       saveStatus: 'saved',
