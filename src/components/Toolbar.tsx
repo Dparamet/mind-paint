@@ -1,4 +1,4 @@
-import { ArrowUpRight, Brain, Circle, Eraser, Lasso, MessageSquare, Minus, MousePointer2, PaintBucket, Pencil, PenLine, Square, StickyNote, Type } from 'lucide-react';
+import { ArrowUpRight, Brain, Circle, Diamond, Eraser, Hexagon, Lasso, MessageSquare, Minus, MousePointer2, PaintBucket, Pencil, PenLine, Square, Star, StickyNote, Triangle, Type } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { Tool } from '../types/editor';
 import { useEditorStore } from '../store/useEditorStore';
@@ -19,6 +19,10 @@ const toolGroups: ToolEntry[][] = [
   [
     { id: 'rectangle', label: 'Rectangle (R)', icon: Square },
     { id: 'circle', label: 'Circle (C)', icon: Circle },
+    { id: 'triangle', label: 'Triangle', icon: Triangle },
+    { id: 'diamond', label: 'Diamond', icon: Diamond },
+    { id: 'hexagon', label: 'Hexagon', icon: Hexagon },
+    { id: 'star', label: 'Star', icon: Star },
     { id: 'line', label: 'Line', icon: Minus },
     { id: 'arrow', label: 'Arrow (A)', icon: ArrowUpRight },
   ],
