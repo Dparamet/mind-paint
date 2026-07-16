@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
+import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, RegularPolygon, Stage, Star as KonvaStar, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
-import type { CanvasElement, CircleElement, ImageElement, RectElement, StickyElement, TextElement } from '../types/editor';
+import type { CanvasElement, CircleElement, ImageElement, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
 
@@ -138,7 +138,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
   // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
   const drawDraftRef = useRef<{
-    kind: 'free' | 'segment' | 'rect' | 'circle';
+    kind: 'free' | 'segment' | 'rect' | 'circle' | 'radial';
     points?: number[];
     patch: Partial<CanvasElement> | null;
   } | null>(null);
@@ -381,11 +381,35 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
+    const worldPos = getPointer(true);
+    // Point-based erasing for freehand strokes (pen/pencil = many-point lines)
+    if (worldPos) {
+      const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
+      const r2 = eraserRadius * eraserRadius;
+      for (const el of elements) {
+        if (el.type !== 'line' || el.points.length <= 4) continue;
+        const layerInfo = layers.find((l) => l.id === el.layerId);
+        if (!layerInfo?.visible || layerInfo.locked) continue;
+        const pts = el.points;
+        const newPts: number[] = [];
+        for (let i = 0; i + 1 < pts.length; i += 2) {
+          const dx = pts[i] - worldPos.x;
+          const dy = pts[i + 1] - worldPos.y;
+          if (dx * dx + dy * dy > r2) newPts.push(pts[i], pts[i + 1]);
+        }
+        if (newPts.length < pts.length) {
+          if (newPts.length < 4) deleteElement(el.id);
+          else updateElement(el.id, { points: newPts }, false);
+        }
+      }
+    }
+    // Intersection-based deletion for shapes, straight lines, arrows, etc.
     const node = stageRef.current?.getIntersection(screenPos);
     if (!node) return;
     const id = node.id();
     const el = elements.find((e) => e.id === id);
     if (!el) return;
+    if (el.type === 'line' && el.points.length > 4) return; // already handled above
     const elementLayer = layers.find((l) => l.id === el.layerId);
     if (elementLayer?.visible && !elementLayer.locked) deleteElement(id);
   }
@@ -432,6 +456,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       setIsMiddlePanning(true);
       return;
     }
+
+    // While editing text/sticky, let the textarea's onBlur handle commit; don't start new interactions
+    if (editingId) return;
 
     const point = getPointer();
     if (!point) return;
@@ -635,6 +662,43 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       });
     }
 
+    if (tool === 'triangle' || tool === 'diamond' || tool === 'hexagon') {
+      const sides = tool === 'triangle' ? 3 : tool === 'diamond' ? 4 : 6;
+      drawDraftRef.current = { kind: 'radial', points: [point.x, point.y], patch: null };
+      addElement({
+        id,
+        layerId: activeLayerId,
+        type: 'polygon',
+        x: point.x,
+        y: point.y,
+        sides,
+        radius: 1,
+        rotation: tool === 'diamond' ? 45 : 0,
+        stroke: strokeColor,
+        fill: fillColor,
+        strokeWidth: brushSize,
+        dash: DASH_MAP[strokeDash],
+      });
+    }
+
+    if (tool === 'star') {
+      drawDraftRef.current = { kind: 'radial', points: [point.x, point.y], patch: null };
+      addElement({
+        id,
+        layerId: activeLayerId,
+        type: 'star',
+        x: point.x,
+        y: point.y,
+        numPoints: 5,
+        outerRadius: 1,
+        innerRadius: 1,
+        stroke: strokeColor,
+        fill: fillColor,
+        strokeWidth: brushSize,
+        dash: DASH_MAP[strokeDash],
+      });
+    }
+
     if (tool === 'text') {
       drawingId.current = null;
       const element: TextElement = {
@@ -756,6 +820,16 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       const attrs = { radiusX: Math.abs(point.x - draft.points[0]), radiusY: Math.abs(point.y - draft.points[1]) };
       node.setAttrs(attrs);
       draft.patch = attrs;
+    } else if (draft.kind === 'radial' && draft.points) {
+      const dx = point.x - draft.points[0];
+      const dy = point.y - draft.points[1];
+      const r = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const isStar = (node as Konva.Node).className === 'Star';
+      const attrs = isStar
+        ? { outerRadius: r, innerRadius: Math.max(1, r * 0.4) }
+        : { radius: r };
+      node.setAttrs(attrs);
+      draft.patch = attrs as Partial<CanvasElement>;
     }
     node.getLayer()?.batchDraw();
   }
@@ -906,6 +980,23 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         rotation: node.rotation(),
       });
     }
+    if (element.type === 'polygon') {
+      const poly = element as PolygonElement;
+      updateElement(id, {
+        x: node.x(), y: node.y(),
+        radius: Math.max(4, poly.radius * (scaleX + scaleY) / 2),
+        rotation: node.rotation(),
+      });
+    }
+    if (element.type === 'star') {
+      const star = element as StarElement;
+      updateElement(id, {
+        x: node.x(), y: node.y(),
+        outerRadius: Math.max(4, star.outerRadius * (scaleX + scaleY) / 2),
+        innerRadius: Math.max(2, star.innerRadius * (scaleX + scaleY) / 2),
+        rotation: node.rotation(),
+      });
+    }
   }
 
   function editTextElement(element: CanvasElement) {
@@ -963,6 +1054,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (element.type === 'arrow') return <Arrow {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
     if (element.type === 'rect') return <Rect {...common} width={element.width} height={element.height} />;
     if (element.type === 'circle') return <Ellipse {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
+    if (element.type === 'polygon') return <RegularPolygon {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
+    if (element.type === 'star') return <KonvaStar {...common} numPoints={(element as StarElement).numPoints} outerRadius={(element as StarElement).outerRadius} innerRadius={(element as StarElement).innerRadius} />;
     if (element.type === 'text') return <Text {...common} text={element.text} width={element.width} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
     if (element.type === 'sticky') {
       return (

@@ -12,6 +12,10 @@ export function getElementBounds(el: CanvasElement): { x: number; y: number; w: 
       return { x: el.x - el.radiusX, y: el.y - el.radiusY, w: el.radiusX * 2 || 1, h: el.radiusY * 2 || 1 };
     case 'text':
       return { x: el.x, y: el.y, w: el.width || 1, h: el.fontSize * 2 || 1 };
+    case 'polygon':
+      return { x: el.x - el.radius, y: el.y - el.radius, w: el.radius * 2 || 1, h: el.radius * 2 || 1 };
+    case 'star':
+      return { x: el.x - el.outerRadius, y: el.y - el.outerRadius, w: el.outerRadius * 2 || 1, h: el.outerRadius * 2 || 1 };
     case 'line':
     case 'arrow': {
       const xs = el.points.filter((_, i) => i % 2 === 0);

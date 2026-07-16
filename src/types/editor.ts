@@ -6,6 +6,10 @@ export type Tool =
   | 'eraser'
   | 'rectangle'
   | 'circle'
+  | 'triangle'
+  | 'diamond'
+  | 'hexagon'
+  | 'star'
   | 'line'
   | 'arrow'
   | 'sticky'
@@ -14,7 +18,7 @@ export type Tool =
   | 'text'
   | 'fill';
 
-export type ElementKind = 'line' | 'arrow' | 'rect' | 'circle' | 'text' | 'image' | 'sticky' | 'mindNode' | 'speech';
+export type ElementKind = 'line' | 'arrow' | 'rect' | 'circle' | 'polygon' | 'star' | 'text' | 'image' | 'sticky' | 'mindNode' | 'speech';
 
 export interface Point {
   x: number;
@@ -110,11 +114,26 @@ export interface ImageElement extends BaseElement {
   isFill?: boolean;
 }
 
+export interface PolygonElement extends BaseElement {
+  type: 'polygon';
+  sides: number;
+  radius: number;
+}
+
+export interface StarElement extends BaseElement {
+  type: 'star';
+  numPoints: number;
+  outerRadius: number;
+  innerRadius: number;
+}
+
 export type CanvasElement =
   | LineElement
   | ArrowElement
   | RectElement
   | CircleElement
+  | PolygonElement
+  | StarElement
   | TextElement
   | ImageElement
   | StickyElement
