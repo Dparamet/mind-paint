@@ -129,7 +129,10 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [stageSize, setStageSize] = useState({ width: 1200, height: 800 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, _setEditingId] = useState<string | null>(null);
+  const editingIdRef = useRef<string | null>(null);
+  // ponytail: ref mirrors state so handlePointerDown guard sees the value synchronously (setState is async)
+  function setEditingId(id: string | null) { editingIdRef.current = id; _setEditingId(id); }
   const [editingText, setEditingText] = useState('');
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
@@ -391,13 +394,28 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const layerInfo = layers.find((l) => l.id === el.layerId);
         if (!layerInfo?.visible || layerInfo.locked) continue;
         const pts = el.points;
-        const newPts: number[] = [];
-        for (let i = 0; i + 1 < pts.length; i += 2) {
-          const dx = pts[i] - worldPos.x;
-          const dy = pts[i + 1] - worldPos.y;
-          if (dx * dx + dy * dy > r2) newPts.push(pts[i], pts[i + 1]);
+        // Segment intersection: mark both endpoints of any segment whose closest
+        // point to the cursor falls within the eraser radius. This handles the
+        // case where the cursor is between two stored points on the visual spline.
+        const toRemove = new Set<number>();
+        for (let i = 0; i + 3 < pts.length; i += 2) {
+          const x1 = pts[i], y1 = pts[i + 1], x2 = pts[i + 2], y2 = pts[i + 3];
+          const sdx = x2 - x1, sdy = y2 - y1;
+          const len2 = sdx * sdx + sdy * sdy;
+          let cx: number, cy: number;
+          if (len2 === 0) { cx = x1; cy = y1; }
+          else {
+            const t = Math.max(0, Math.min(1, ((worldPos.x - x1) * sdx + (worldPos.y - y1) * sdy) / len2));
+            cx = x1 + t * sdx; cy = y1 + t * sdy;
+          }
+          const ex = worldPos.x - cx, ey = worldPos.y - cy;
+          if (ex * ex + ey * ey <= r2) { toRemove.add(i); toRemove.add(i + 2); }
         }
-        if (newPts.length < pts.length) {
+        if (toRemove.size > 0) {
+          const newPts: number[] = [];
+          for (let i = 0; i + 1 < pts.length; i += 2) {
+            if (!toRemove.has(i)) newPts.push(pts[i], pts[i + 1]);
+          }
           if (newPts.length < 4) deleteElement(el.id);
           else updateElement(el.id, { points: newPts }, false);
         }
@@ -458,7 +476,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
 
     // While editing text/sticky, let the textarea's onBlur handle commit; don't start new interactions
-    if (editingId) return;
+    if (editingIdRef.current) return;
 
     const point = getPointer();
     if (!point) return;
