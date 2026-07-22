@@ -281,6 +281,18 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
               onClick={() => handleItalic(!state.italic)}
             >I</button>
           </>
+        ) : state.tool === 'fill' ? (
+          <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
+            Fill tolerance
+            <input
+              aria-label="Fill tolerance"
+              className="w-24 accent-accent"
+              type="range" min="0" max="96" step="4"
+              value={state.fillTolerance}
+              onChange={(e) => state.setFillTolerance(Number(e.target.value))}
+            />
+            <span className="w-7 tabular-nums">{state.fillTolerance}</span>
+          </label>
         ) : (
           <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
             Brush
