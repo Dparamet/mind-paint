@@ -172,6 +172,7 @@ export interface EditorSettings {
   fillColor: string;
   recentColors: string[];
   brushSize: number;
+  fillTolerance: number;
   showGrid: boolean;
   snapToGrid: boolean;
   gridSize: number;

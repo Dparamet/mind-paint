@@ -4,6 +4,7 @@ import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, 
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
+import { erasePolyline, floodFillMask } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
@@ -63,6 +64,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     strokeColor,
     fillColor,
     brushSize,
+    fillTolerance,
     showGrid,
     snapToGrid,
     gridSize,
@@ -95,6 +97,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       strokeColor: s.strokeColor,
       fillColor: s.fillColor,
       brushSize: s.brushSize,
+      fillTolerance: s.fillTolerance,
       showGrid: s.showGrid,
       snapToGrid: s.snapToGrid,
       gridSize: s.gridSize,
@@ -291,9 +294,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const prevNodes = transformerRef.current?.nodes() ?? [];
     transformerRef.current?.nodes([]);
 
-    const W = stageSize.width;
-    const H = stageSize.height;
     const stageCanvas = stage.toCanvas({ pixelRatio: 1 });
+    const W = stageCanvas.width;
+    const H = stageCanvas.height;
+    const pixelScaleX = W / stageSize.width;
+    const pixelScaleY = H / stageSize.height;
 
     transformerRef.current?.nodes(prevNodes);
 
@@ -301,49 +306,23 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const composite = document.createElement('canvas');
     composite.width = W; composite.height = H;
     const compCtx = composite.getContext('2d')!;
-    compCtx.drawImage(stageCanvas, 0, 0);
+    compCtx.drawImage(stageCanvas, 0, 0, W, H);
     if (fillCanvasRef.current && fillCanvasRef.current.width === W && fillCanvasRef.current.height === H) {
       compCtx.drawImage(fillCanvasRef.current, 0, 0);
     }
 
     const srcPx = compCtx.getImageData(0, 0, W, H).data;
 
-    const px = Math.round(screenX);
-    const py = Math.round(screenY);
+    const px = Math.round(screenX * pixelScaleX);
+    const py = Math.round(screenY * pixelScaleY);
     if (px < 0 || px >= W || py < 0 || py >= H) return;
 
-    const si = (py * W + px) * 4;
-    const tr = srcPx[si], tg = srcPx[si + 1], tb = srcPx[si + 2];
-
-    if (tr === fill.r && tg === fill.g && tb === fill.b) return;
-
-    // BFS with typed arrays for perf
-    const visited = new Uint8Array(W * H);
-    const queue = new Int32Array(W * H);
-    let head = 0, tail = 0;
-    const start = py * W + px;
-    queue[tail++] = start;
-    visited[start] = 1;
-
-    const out = new Uint8ClampedArray(W * H * 4);
-    const TOLERANCE = 32;
-
-    while (head < tail) {
-      const pos = queue[head++];
-      const x = pos % W;
-      const pi = pos * 4;
-      out[pi] = fill.r; out[pi + 1] = fill.g; out[pi + 2] = fill.b; out[pi + 3] = 255;
-
-      for (const npos of [pos - 1, pos + 1, pos - W, pos + W]) {
-        if (npos < 0 || npos >= W * H) continue;
-        if (Math.abs((npos % W) - x) > 1) continue;
-        if (visited[npos]) continue;
-        visited[npos] = 1;
-        const ni = npos * 4;
-        const diff = Math.abs(srcPx[ni] - tr) + Math.abs(srcPx[ni + 1] - tg) + Math.abs(srcPx[ni + 2] - tb);
-        if (diff < TOLERANCE) queue[tail++] = npos;
-      }
+    const out = floodFillMask(srcPx, W, H, px, py, fill, fillTolerance);
+    let hasPaint = false;
+    for (let i = 3; i < out.length; i += 4) {
+      if (out[i] !== 0) { hasPaint = true; break; }
     }
+    if (!hasPaint) return;
 
     // Accumulate into fillCanvasRef so next BFS sees this fill immediately
     if (!fillCanvasRef.current || fillCanvasRef.current.width !== W || fillCanvasRef.current.height !== H) {
@@ -353,7 +332,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
     const tmpCanvas = document.createElement('canvas');
     tmpCanvas.width = W; tmpCanvas.height = H;
-    tmpCanvas.getContext('2d')!.putImageData(new ImageData(out, W, H), 0, 0);
+    tmpCanvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(out), W, H), 0, 0);
     fillCanvasRef.current.getContext('2d')!.drawImage(tmpCanvas, 0, 0);
 
     const dataUrl = fillCanvasRef.current.toDataURL('image/png');
@@ -374,8 +353,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         isFill: true,
         x: worldX,
         y: worldY,
-        width: W / scale,
-        height: H / scale,
+        width: stageSize.width / scale,
+        height: stageSize.height / scale,
         stroke: '#00000000',
         fill: '#00000000',
         strokeWidth: 0,
@@ -385,39 +364,23 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
     const worldPos = getPointer(true);
-    // Point-based erasing for freehand strokes (pen/pencil = many-point lines)
+    // Cut freehand strokes into surviving pieces instead of deleting or
+    // reconnecting the entire vector line when the eraser crosses its middle.
     if (worldPos) {
       const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
-      const r2 = eraserRadius * eraserRadius;
       for (const el of elements) {
         if (el.type !== 'line' || el.points.length <= 4) continue;
         const layerInfo = layers.find((l) => l.id === el.layerId);
         if (!layerInfo?.visible || layerInfo.locked) continue;
-        const pts = el.points;
-        // Segment intersection: mark both endpoints of any segment whose closest
-        // point to the cursor falls within the eraser radius. This handles the
-        // case where the cursor is between two stored points on the visual spline.
-        const toRemove = new Set<number>();
-        for (let i = 0; i + 3 < pts.length; i += 2) {
-          const x1 = pts[i], y1 = pts[i + 1], x2 = pts[i + 2], y2 = pts[i + 3];
-          const sdx = x2 - x1, sdy = y2 - y1;
-          const len2 = sdx * sdx + sdy * sdy;
-          let cx: number, cy: number;
-          if (len2 === 0) { cx = x1; cy = y1; }
-          else {
-            const t = Math.max(0, Math.min(1, ((worldPos.x - x1) * sdx + (worldPos.y - y1) * sdy) / len2));
-            cx = x1 + t * sdx; cy = y1 + t * sdy;
-          }
-          const ex = worldPos.x - cx, ey = worldPos.y - cy;
-          if (ex * ex + ey * ey <= r2) { toRemove.add(i); toRemove.add(i + 2); }
+        const pieces = erasePolyline(el.points, worldPos, eraserRadius);
+        if (pieces.length === 1 && pieces[0].length === el.points.length && pieces[0].every((point, i) => point === el.points[i])) continue;
+        if (!pieces.length) {
+          deleteElement(el.id);
+          continue;
         }
-        if (toRemove.size > 0) {
-          const newPts: number[] = [];
-          for (let i = 0; i + 1 < pts.length; i += 2) {
-            if (!toRemove.has(i)) newPts.push(pts[i], pts[i + 1]);
-          }
-          if (newPts.length < 4) deleteElement(el.id);
-          else updateElement(el.id, { points: newPts }, false);
+        updateElement(el.id, { points: pieces[0] }, false);
+        for (const points of pieces.slice(1)) {
+          addElement({ ...el, id: crypto.randomUUID(), points });
         }
       }
     }
@@ -536,7 +499,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         targetId = (event.target.parent as Konva.Node | null)?.id() ?? '';
       }
       const hitEl = elements.find((e) => e.id === targetId);
-      if (hitEl && ['rect', 'circle', 'sticky', 'mindNode', 'speech'].includes(hitEl.type)) {
+      if (hitEl && ['rect', 'circle', 'polygon', 'star', 'sticky', 'mindNode', 'speech'].includes(hitEl.type)) {
         updateElement(hitEl.id, { fill: fillColor });
       } else {
         const pos = stageRef.current?.getPointerPosition();
@@ -1028,7 +991,6 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     const canMoveElement = tool === 'select' && Boolean(elementLayer && elementLayer.visible && !elementLayer.locked);
     const common = {
       id: element.id,
-      key: element.id,
       x: element.x,
       y: element.y,
       rotation: element.rotation ?? 0,
@@ -1068,16 +1030,16 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       onDblTap: () => editTextElement(element),
     };
 
-    if (element.type === 'line') return <Line {...common} points={element.points} tension={element.tension} lineCap={element.lineCap} lineJoin={element.lineJoin} />;
-    if (element.type === 'arrow') return <Arrow {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
-    if (element.type === 'rect') return <Rect {...common} width={element.width} height={element.height} />;
-    if (element.type === 'circle') return <Ellipse {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
-    if (element.type === 'polygon') return <RegularPolygon {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
-    if (element.type === 'star') return <KonvaStar {...common} numPoints={(element as StarElement).numPoints} outerRadius={(element as StarElement).outerRadius} innerRadius={(element as StarElement).innerRadius} />;
-    if (element.type === 'text') return <Text {...common} text={element.text} width={element.width} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
+    if (element.type === 'line') return <Line key={element.id} {...common} points={element.points} tension={element.tension} lineCap={element.lineCap} lineJoin={element.lineJoin} />;
+    if (element.type === 'arrow') return <Arrow key={element.id} {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
+    if (element.type === 'rect') return <Rect key={element.id} {...common} width={element.width} height={element.height} />;
+    if (element.type === 'circle') return <Ellipse key={element.id} {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
+    if (element.type === 'polygon') return <RegularPolygon key={element.id} {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
+    if (element.type === 'star') return <KonvaStar key={element.id} {...common} numPoints={(element as StarElement).numPoints} outerRadius={(element as StarElement).outerRadius} innerRadius={(element as StarElement).innerRadius} />;
+    if (element.type === 'text') return <Text key={element.id} {...common} text={element.text} width={element.width} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
     if (element.type === 'sticky') {
       return (
-        <Group {...common}>
+        <Group key={element.id} {...common}>
           <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={8} shadowColor="#17202a" shadowOpacity={0.12} shadowBlur={12} />
           <Text text={element.text} x={14} y={14} width={element.width - 28} fontSize={element.fontSize} fill={element.stroke} />
         </Group>
@@ -1085,7 +1047,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
     if (element.type === 'mindNode') {
       return (
-        <Group {...common}>
+        <Group key={element.id} {...common}>
           <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={42} />
           <Text text={element.text} x={18} y={element.height / 2 - element.fontSize / 1.6} width={element.width - 36} fontSize={element.fontSize} fill={element.stroke} align="center" />
         </Group>
@@ -1093,7 +1055,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
     if (element.type === 'speech') {
       return (
-        <Group {...common}>
+        <Group key={element.id} {...common}>
           <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={16} />
           <Line points={[42, element.height, 28, element.height + 24, 76, element.height]} fill={element.fill} stroke={element.stroke} closed strokeWidth={element.strokeWidth} />
           <Text text={element.text} x={16} y={16} width={element.width - 32} fontSize={element.fontSize} fill={element.stroke} />

@@ -20,6 +20,7 @@ const defaultSettings: EditorSettings = {
   fillColor: '#f4b860',
   recentColors: [],
   brushSize: 6,
+  fillTolerance: 32,
   showGrid: true,
   snapToGrid: false,
   gridSize: 24,
@@ -81,6 +82,7 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setStrokeColor: (color: string) => void;
   setFillColor: (color: string) => void;
   setBrushSize: (size: number) => void;
+  setFillTolerance: (tolerance: number) => void;
   setShowGrid: (show: boolean) => void;
   setSnapToGrid: (snap: boolean) => void;
   setGridSize: (size: number) => void;
@@ -138,6 +140,7 @@ function pickSettings(state: EditorSettings): EditorSettings {
     fillColor: state.fillColor,
     recentColors: state.recentColors,
     brushSize: state.brushSize,
+    fillTolerance: state.fillTolerance,
     showGrid: state.showGrid,
     snapToGrid: state.snapToGrid,
     gridSize: state.gridSize,
@@ -213,6 +216,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set((state) => {
       persistSettings({ ...pickSettings(state), brushSize });
       return { brushSize };
+    }),
+  setFillTolerance: (fillTolerance) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), fillTolerance });
+      return { fillTolerance };
     }),
   setShowGrid: (showGrid) =>
     set((state) => {
