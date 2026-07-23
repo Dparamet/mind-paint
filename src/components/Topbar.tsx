@@ -229,13 +229,13 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   ];
 
   return (
-    <header className="flex flex-col gap-1.5 border-b border-line bg-panel px-4 py-2">
+    <header className="flex flex-col gap-1.5 border-b border-line bg-panel px-4 py-2 shadow-[0_1px_0_rgba(255,255,255,0.75)]">
 
       {/* Row 1 — drawing controls */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           aria-label="Project name"
-          className="w-44 min-w-0 rounded-md border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink outline-none focus:border-accent"
+          className="w-44 min-w-0 rounded-md border border-line bg-paper px-3 py-1.5 text-sm font-semibold text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
           value={state.name}
           onChange={(e) => state.setName(e.target.value)}
         />
@@ -254,7 +254,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           <>
             <select
               aria-label="Font family"
-              className="rounded-md border border-line bg-white px-2 py-1.5 text-xs outline-none focus:border-accent"
+              className="rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
               value={state.fontFamily}
               onChange={(e) => handleFontFamily(e.target.value)}
             >
@@ -265,7 +265,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
             </select>
             <input
               aria-label="Font size"
-              className="w-16 rounded-md border border-line bg-white px-2 py-1.5 text-xs outline-none focus:border-accent"
+              className="w-16 rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
               type="number" min="10" max="96" step="2"
               value={state.fontSize}
               onChange={(e) => handleFontSize(Number(e.target.value))}
@@ -331,10 +331,10 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           </label>
           <div className="h-4 w-px bg-line" />
           <span className="text-xs font-medium text-ink/60">Stroke</span>
-          <div className="flex items-center gap-0.5 rounded border border-line bg-white p-0.5">
+          <div className="flex items-center gap-0.5 rounded border border-line bg-paper p-0.5">
             {(['solid', 'dashed', 'dotted'] as const).map((d) => (
               <button key={d} title={d} aria-pressed={activeDash === d}
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-white' : 'text-ink hover:bg-accent/10'}`}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-panel' : 'text-ink hover:bg-accent/10'}`}
                 onClick={() => handleDash(d)}
               >
                 {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
@@ -391,7 +391,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <button className="icon-button h-8 w-8" title="Save (Ctrl+S)" aria-label="Save" onClick={state.saveCurrentProject}>
           <Save size={15} />
         </button>
-        <button className="icon-button h-8 w-8 hover:border-coral hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
+        <button className="icon-button h-8 w-8 hover:border-coral hover:bg-coral/10 hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
           <Trash2 size={15} />
         </button>
         <div className="mx-1 h-5 w-px bg-line" />

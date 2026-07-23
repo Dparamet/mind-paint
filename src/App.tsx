@@ -121,7 +121,7 @@ export default function App() {
         <PropertiesPanel />
         <LayerPanel />
         <ProjectManager />
-        <div className="shrink-0 border-t border-line px-4 py-2 text-xs text-ink/60">
+        <div className="shrink-0 border-t border-line bg-sunshine/10 px-4 py-2 text-xs font-medium text-ink/70">
           {saveStatus === 'saving' && <span className="text-accent">Saving…</span>}
           {saveStatus === 'saved' && <span>Saved</span>}
           {saveStatus === 'dirty' && <span className="text-coral">Unsaved changes</span>}

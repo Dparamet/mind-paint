@@ -43,7 +43,7 @@ export function Toolbar() {
 
   return (
     <aside className="flex w-16 flex-col items-center gap-1 border-r border-line bg-panel px-3 py-4">
-      <div className="mb-3 h-9 w-9 select-none rounded-md bg-accent text-center text-lg font-black leading-9 text-white">
+      <div className="mb-3 h-9 w-9 select-none rounded-md border border-sunshine/70 bg-sunshine text-center text-lg font-black leading-9 text-ink shadow-[0_8px_18px_rgba(247,201,72,0.28)]">
         M
       </div>
       {toolGroups.map((group, i) => (

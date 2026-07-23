@@ -1075,7 +1075,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (element.type === 'sticky') {
       return (
         <Group key={element.id} {...common}>
-          <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={8} shadowColor="#17202a" shadowOpacity={0.12} shadowBlur={12} />
+          <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={8} shadowColor="#24313d" shadowOpacity={0.12} shadowBlur={12} />
           <Text text={element.text} x={14} y={14} width={element.width - 28} fontSize={element.fontSize} fill={element.stroke} />
         </Group>
       );
@@ -1101,8 +1101,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   return (
-    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-white">
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink shadow-soft">
+    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
           aria-label="Canvas zoom"
@@ -1129,7 +1129,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
         draggable={isSpacePressed}
-        className={`${showGrid ? 'bg-white [background-image:linear-gradient(#e8e8e8_1px,transparent_1px),linear-gradient(90deg,#e8e8e8_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-white'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
+        className={`${showGrid ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-panel'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1146,7 +1146,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         }}
       >
         <KonvaLayer listening={false}>
-          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#ffffff" />
+          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffaf0" />
         </KonvaLayer>
         {elementsByLayer.map(({ layer, elements: layerElements }) => (
           <KonvaLayer key={layer.id} visible={layer.visible} listening={!layer.locked}>
@@ -1249,7 +1249,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           >
             <textarea
               autoFocus
-              className="h-20 w-full resize-none rounded border border-line bg-white p-2 text-sm outline-none"
+              className="h-20 w-full resize-none rounded border border-line bg-paper p-2 text-sm outline-none focus:border-accent"
               placeholder="Add a comment…"
               value={commentDraft}
               onChange={(e) => setCommentDraft(e.target.value)}
@@ -1260,7 +1260,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             />
             <div className="mt-1 flex justify-end gap-2 text-xs">
               <button
-                className="rounded border border-line px-2 py-1 hover:border-coral hover:text-coral"
+                className="rounded border border-line px-2 py-1 hover:border-coral hover:bg-coral/10 hover:text-coral"
                 onClick={() => { updateElement(commentingId, { comment: undefined } as Partial<CanvasElement>); setCommentingId(null); }}
               >
                 Delete
@@ -1276,7 +1276,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       {selectedElementId && (
         <div className="absolute bottom-4 left-4 flex gap-2">
           <button
-            className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
+            className="rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium shadow-soft hover:border-coral hover:bg-coral/10 hover:text-coral"
             onClick={() => {
               if (selectedElementIds.length) {
                 deleteSelectedElements();
