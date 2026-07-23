@@ -161,3 +161,47 @@ export function floodFillMask(
 
   return mask;
 }
+
+export function removeContiguousBackground(
+  source: Uint8ClampedArray,
+  width: number,
+  height: number,
+  startX: number,
+  startY: number,
+  tolerance = 32,
+) {
+  const pixels = new Uint8ClampedArray(source);
+  if (width <= 0 || height <= 0 || source.length < width * height * 4) return { pixels, removed: 0 };
+  if (startX < 0 || startX >= width || startY < 0 || startY >= height) return { pixels, removed: 0 };
+
+  const start = (startY * width + startX) * 4;
+  const target = { r: source[start], g: source[start + 1], b: source[start + 2] };
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  let removed = 0;
+  const startIndex = startY * width + startX;
+  queue[tail++] = startIndex;
+  visited[startIndex] = 1;
+
+  while (head < tail) {
+    const pixel = queue[head++];
+    const x = pixel % width;
+    const index = pixel * 4;
+    if (source[index + 3] === 0 || colorDifference(source, index, target) > tolerance) continue;
+
+    pixels[index + 3] = 0;
+    removed += 1;
+
+    const neighbors = [pixel - 1, pixel + 1, pixel - width, pixel + width];
+    for (const next of neighbors) {
+      if (next < 0 || next >= width * height || visited[next]) continue;
+      if (Math.abs((next % width) - x) > 1) continue;
+      visited[next] = 1;
+      queue[tail++] = next;
+    }
+  }
+
+  return { pixels, removed };
+}

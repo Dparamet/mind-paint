@@ -8,7 +8,9 @@ export type Tool =
   | 'circle'
   | 'triangle'
   | 'diamond'
+  | 'pentagon'
   | 'hexagon'
+  | 'octagon'
   | 'star'
   | 'line'
   | 'arrow'
@@ -16,7 +18,8 @@ export type Tool =
   | 'mindNode'
   | 'speech'
   | 'text'
-  | 'fill';
+  | 'fill'
+  | 'backgroundEraser';
 
 export type ElementKind = 'line' | 'arrow' | 'rect' | 'circle' | 'polygon' | 'star' | 'text' | 'image' | 'sticky' | 'mindNode' | 'speech';
 

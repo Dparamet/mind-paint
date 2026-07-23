@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { erasePolyline, floodFillMask } from '../utils/drawingUtils';
+import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
 
 describe('erasePolyline', () => {
   it('cuts a small section out of a stroke instead of deleting the whole line', () => {
@@ -48,5 +48,38 @@ describe('floodFillMask', () => {
   it('does not create a new mask when the target already has the fill color', () => {
     const source = new Uint8ClampedArray(4 * 4).fill(255);
     expect(floodFillMask(source, 1, 1, 0, 0, { r: 255, g: 255, b: 255 })).toEqual(new Uint8ClampedArray(4));
+  });
+});
+
+describe('removeContiguousBackground', () => {
+  it('makes only the clicked contiguous background transparent', () => {
+    const width = 4;
+    const height = 3;
+    const source = new Uint8ClampedArray(width * height * 4);
+    for (let pixel = 0; pixel < width * height; pixel += 1) {
+      const i = pixel * 4;
+      source[i] = 255;
+      source[i + 1] = 255;
+      source[i + 2] = 255;
+      source[i + 3] = 255;
+    }
+
+    const island = (1 * width + 1) * 4;
+    source[island] = 20;
+    source[island + 1] = 20;
+    source[island + 2] = 20;
+
+    const { pixels, removed } = removeContiguousBackground(source, width, height, 0, 0, 12);
+
+    expect(removed).toBe(11);
+    expect(pixels[3]).toBe(0);
+    expect(pixels[island + 3]).toBe(255);
+    expect(source[3]).toBe(255);
+  });
+
+  it('returns unchanged pixels when the click is outside the image', () => {
+    const source = new Uint8ClampedArray([255, 255, 255, 255]);
+    expect(removeContiguousBackground(source, 1, 1, 2, 0).pixels).toEqual(source);
+    expect(removeContiguousBackground(source, 1, 1, 2, 0).removed).toBe(0);
   });
 });

@@ -36,6 +36,7 @@ const defaultSettings: EditorSettings = {
     l: 'lasso',
     p: 'pen',
     e: 'eraser',
+    b: 'backgroundEraser',
     r: 'rectangle',
     c: 'circle',
     t: 'text',

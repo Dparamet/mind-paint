@@ -1,4 +1,4 @@
-import { ArrowUpRight, Brain, Circle, Diamond, Eraser, Hexagon, Lasso, MessageSquare, Minus, MousePointer2, PaintBucket, Pencil, PenLine, Square, Star, StickyNote, Triangle, Type } from 'lucide-react';
+import { ArrowUpRight, Brain, Circle, Diamond, Eraser, Hexagon, ImageOff, Lasso, MessageSquare, Minus, MousePointer2, Octagon, PaintBucket, Pencil, PenLine, Pentagon, Square, Star, StickyNote, Triangle, Type } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { Tool } from '../types/editor';
 import { useEditorStore } from '../store/useEditorStore';
@@ -15,13 +15,16 @@ const toolGroups: ToolEntry[][] = [
     { id: 'pencil', label: 'Pencil', icon: Pencil },
     { id: 'eraser', label: 'Eraser (E)', icon: Eraser },
     { id: 'fill', label: 'Fill bucket (F)', icon: PaintBucket },
+    { id: 'backgroundEraser', label: 'Remove image background', icon: ImageOff },
   ],
   [
     { id: 'rectangle', label: 'Rectangle (R)', icon: Square },
     { id: 'circle', label: 'Circle (C)', icon: Circle },
     { id: 'triangle', label: 'Triangle', icon: Triangle },
     { id: 'diamond', label: 'Diamond', icon: Diamond },
+    { id: 'pentagon', label: 'Pentagon', icon: Pentagon },
     { id: 'hexagon', label: 'Hexagon', icon: Hexagon },
+    { id: 'octagon', label: 'Octagon', icon: Octagon },
     { id: 'star', label: 'Star', icon: Star },
     { id: 'line', label: 'Line', icon: Minus },
     { id: 'arrow', label: 'Arrow (A)', icon: ArrowUpRight },

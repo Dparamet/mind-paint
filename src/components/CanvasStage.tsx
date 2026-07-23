@@ -4,7 +4,7 @@ import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, 
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
-import { erasePolyline, floodFillMask } from '../utils/drawingUtils';
+import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
@@ -261,6 +261,30 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     setSelectedElementId(element.id);
   }
 
+  async function removeImageBackground(element: ImageElement, point: { x: number; y: number }) {
+    if (element.isFill) return;
+    const localX = Math.floor(point.x - element.x);
+    const localY = Math.floor(point.y - element.y);
+    if (localX < 0 || localY < 0 || localX >= element.width || localY >= element.height) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = element.width;
+      canvas.height = element.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, element.width, element.height);
+      const imageData = ctx.getImageData(0, 0, element.width, element.height);
+      const result = removeContiguousBackground(imageData.data, element.width, element.height, localX, localY, fillTolerance);
+      if (!result.removed) return;
+      ctx.putImageData(new ImageData(result.pixels, element.width, element.height), 0, 0);
+      updateElement(element.id, { src: canvas.toDataURL('image/png') } as Partial<CanvasElement>);
+      setSelectedElementId(element.id);
+    };
+    img.src = element.src;
+  }
+
   function getPointer(noSnap = false) {
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition();
@@ -508,6 +532,16 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (tool === 'backgroundEraser') {
+      let targetId = hitId;
+      if (!elements.find((e) => e.id === targetId)) {
+        targetId = (event.target.parent as Konva.Node | null)?.id() ?? selectedElementId ?? '';
+      }
+      const hitEl = elements.find((e): e is ImageElement => e.id === targetId && e.type === 'image');
+      if (hitEl) void removeImageBackground(hitEl, point);
+      return;
+    }
+
     const id = crypto.randomUUID();
     drawingId.current = id;
 
@@ -643,8 +677,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       });
     }
 
-    if (tool === 'triangle' || tool === 'diamond' || tool === 'hexagon') {
-      const sides = tool === 'triangle' ? 3 : tool === 'diamond' ? 4 : 6;
+    if (tool === 'triangle' || tool === 'diamond' || tool === 'pentagon' || tool === 'hexagon' || tool === 'octagon') {
+      const sidesByTool = { triangle: 3, diamond: 4, pentagon: 5, hexagon: 6, octagon: 8 } as const;
+      const sides = sidesByTool[tool];
       drawDraftRef.current = { kind: 'radial', points: [point.x, point.y], patch: null };
       addElement({
         id,
