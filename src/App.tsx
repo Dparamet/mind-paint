@@ -108,14 +108,14 @@ export default function App() {
         <CanvasStage stageRef={stageRef} />
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <div className="flex w-72 flex-col bg-panel">
+      <div className="flex w-72 flex-col border-l border-line bg-panel">
         <LayerPanel />
         <ProjectManager />
-        <div className="border-t border-line px-4 py-2 text-xs text-ink/60">
-          {saveStatus === 'saving' && 'Saving...'}
+        <div className="border-t border-line bg-sunshine/10 px-4 py-2 text-xs font-medium text-ink/70">
+          {saveStatus === 'saving' && <span className="text-accent">Saving...</span>}
           {saveStatus === 'saved' && 'Saved'}
-          {saveStatus === 'dirty' && 'Unsaved changes'}
-          {saveStatus === 'error' && 'Save failed'}
+          {saveStatus === 'dirty' && <span className="text-coral">Unsaved changes</span>}
+          {saveStatus === 'error' && <span className="text-coral">Save failed</span>}
         </div>
       </div>
     </div>

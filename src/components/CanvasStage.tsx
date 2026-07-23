@@ -189,7 +189,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         x: 0,
         y: 0,
         points: [point.x, point.y],
-        stroke: '#fffdf8',
+        stroke: '#fffaf0',
         fill: 'transparent',
         strokeWidth: Math.max(12, brushSize * 1.8),
         tension: 0.2,
@@ -619,7 +619,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
   return (
     <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink shadow-soft">
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
           aria-label="Canvas zoom"
@@ -646,7 +646,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
         draggable={isSpacePressed}
-        className={`${showGrid ? 'bg-[radial-gradient(circle,#ded7ca_1px,transparent_1px)] [background-size:24px_24px]' : 'bg-paper'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
+        className={`${showGrid ? 'bg-[radial-gradient(circle,#cfe4db_1px,transparent_1px)] [background-size:24px_24px]' : 'bg-paper'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -663,7 +663,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         }}
       >
         <KonvaLayer listening={false}>
-          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffdf8" />
+          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffaf0" />
         </KonvaLayer>
         {elementsByLayer.map(({ layer, elements: layerElements }) => (
           <KonvaLayer key={layer.id} visible={layer.visible} listening={!layer.locked}>
@@ -677,7 +677,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
       {selectedElementId && (
         <button
-          className="absolute bottom-4 left-4 rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
+          className="absolute bottom-4 left-4 rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium shadow-soft hover:border-coral hover:bg-coral/10 hover:text-coral"
           onClick={() => {
             if (selectedElementIds.length) {
               deleteSelectedElements();

@@ -33,14 +33,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
   return (
     <div className="absolute right-80 top-16 z-30 w-80 rounded-md border border-line bg-panel shadow-soft">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+      <div className="flex items-center justify-between border-b border-line bg-sky/10 px-4 py-3">
         <h2 className="text-sm font-bold uppercase tracking-wide">Settings</h2>
         <button className="icon-button h-8 w-8" aria-label="Close settings" onClick={onClose}>
           <X size={15} />
         </button>
       </div>
       <div className="space-y-4 p-4">
-        <div className="rounded-md border border-line bg-white p-3 text-xs leading-5 text-ink/70">
+        <div className="rounded-md border border-line bg-paper p-3 text-xs leading-5 text-ink/70">
           <div><strong>Space</strong> drag = pan canvas</div>
           <div><strong>Alt + wheel</strong> = horizontal pan</div>
           <div><strong>Alt + drag object</strong> = duplicate while moving</div>
@@ -61,11 +61,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/60">Shortcuts</h3>
           <div className="grid grid-cols-2 gap-2">
             {configurableTools.map(({ tool, label }) => (
-              <label key={tool} className="flex items-center justify-between gap-2 rounded-md border border-line bg-white px-2 py-2 text-xs">
+              <label key={tool} className="flex items-center justify-between gap-2 rounded-md border border-line bg-paper px-2 py-2 text-xs transition hover:border-sky/60">
                 <span className="truncate">{label}</span>
                 <input
                   aria-label={`${label} shortcut`}
-                  className="h-7 w-12 rounded border border-line text-center uppercase outline-none focus:border-accent"
+                  className="h-7 w-12 rounded border border-line bg-panel text-center uppercase outline-none focus:border-accent"
                   maxLength={1}
                   value={keyFor(tool).toUpperCase()}
                   onChange={(event) => setShortcut(tool, event.target.value)}

@@ -16,8 +16,8 @@ export function LayerPanel() {
 
   return (
     <aside className="flex w-72 flex-col border-l border-line bg-panel">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-ink">Layers</h2>
+      <div className="flex items-center justify-between border-b border-line bg-sky/10 px-4 py-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-ink/75">Layers</h2>
         <button className="icon-button" aria-label="Add layer" title="Add layer" onClick={addLayer}>
           <Plus size={16} />
         </button>
@@ -26,13 +26,13 @@ export function LayerPanel() {
         {[...layers].reverse().map((layer) => (
           <div
             key={layer.id}
-            className={`rounded-md border bg-white p-2 ${activeLayerId === layer.id ? 'border-accent' : 'border-line'}`}
+            className={`rounded-md border p-2 transition ${activeLayerId === layer.id ? 'border-accent bg-accent/10' : 'border-line bg-paper hover:border-sky/60'}`}
             onClick={() => setActiveLayerId(layer.id)}
           >
             <div className="flex items-center gap-2">
               <input
                 aria-label={`Rename ${layer.name}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-sm font-medium outline-none focus:border-accent"
+                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-sm font-medium outline-none focus:border-accent focus:bg-panel"
                 value={layer.name}
                 onChange={(event) => renameLayer(layer.id, event.target.value)}
               />

@@ -72,11 +72,11 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   return (
-    <header className="flex flex-col gap-3 border-b border-line bg-panel px-4 py-3 xl:flex-row xl:items-center">
+    <header className="flex flex-col gap-3 border-b border-line bg-panel px-4 py-3 shadow-[0_1px_0_rgba(255,255,255,0.75)] xl:flex-row xl:items-center">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
         <input
           aria-label="Project name"
-          className="w-full min-w-0 max-w-56 rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none focus:border-accent sm:w-56"
+          className="w-full min-w-0 max-w-56 rounded-md border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 sm:w-56"
           value={state.name}
           onChange={(event) => state.setName(event.target.value)}
         />
@@ -111,7 +111,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         </label>
         <select
           aria-label="Font family"
-          className="rounded-md border border-line bg-white px-2 py-2 text-xs outline-none focus:border-accent"
+          className="rounded-md border border-line bg-paper px-2 py-2 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
           value={state.fontFamily}
           onChange={(event) => state.setFontFamily(event.target.value)}
         >
@@ -122,17 +122,17 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         </select>
         <input
           aria-label="Font size"
-          className="w-16 rounded-md border border-line bg-white px-2 py-2 text-xs outline-none focus:border-accent"
+          className="w-16 rounded-md border border-line bg-paper px-2 py-2 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
           type="number"
           min="10"
           max="96"
           value={state.fontSize}
           onChange={(event) => state.setFontSize(Number(event.target.value))}
         />
-        <button className={`icon-button ${state.bold ? 'border-accent text-accent' : ''}`} title="Bold" aria-label="Bold" onClick={() => state.setBold(!state.bold)}>
+        <button className={`icon-button ${state.bold ? 'border-accent bg-accent/10 text-accent' : ''}`} title="Bold" aria-label="Bold" onClick={() => state.setBold(!state.bold)}>
           <strong>B</strong>
         </button>
-        <button className={`icon-button ${state.italic ? 'border-accent text-accent' : ''}`} title="Italic" aria-label="Italic" onClick={() => state.setItalic(!state.italic)}>
+        <button className={`icon-button ${state.italic ? 'border-accent bg-accent/10 text-accent' : ''}`} title="Italic" aria-label="Italic" onClick={() => state.setItalic(!state.italic)}>
           <em>I</em>
         </button>
       </div>
