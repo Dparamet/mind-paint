@@ -42,27 +42,32 @@ export function Toolbar() {
   const setTool = useEditorStore((s) => s.setTool);
 
   return (
-    <aside className="flex w-16 flex-col items-center gap-1 border-r border-line bg-panel px-3 py-4">
-      <div className="mb-3 h-9 w-9 select-none rounded-md border border-sunshine/70 bg-sunshine text-center text-lg font-black leading-9 text-ink shadow-[0_8px_18px_rgba(247,201,72,0.28)]">
+    <aside className="flex min-h-0 w-16 flex-col items-center border-r border-line bg-panel px-2 py-3">
+      <div className="mb-2 h-9 w-9 shrink-0 select-none rounded-md border border-sunshine/70 bg-sunshine text-center text-lg font-black leading-9 text-ink shadow-[0_8px_18px_rgba(247,201,72,0.28)]">
         M
       </div>
-      {toolGroups.map((group, i) => (
-        <div key={i} className="flex w-full flex-col items-center gap-1">
-          {i > 0 && <div className="my-1.5 h-px w-8 bg-line" />}
-          {group.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              aria-label={label}
-              aria-pressed={tool === id}
-              title={label}
-              className={`tool-button ${tool === id ? 'tool-button-active' : ''}`}
-              onClick={() => setTool(id)}
-            >
-              <Icon size={18} />
-            </button>
-          ))}
-        </div>
-      ))}
+      <nav
+        aria-label="Drawing tools"
+        className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overscroll-contain pb-2"
+      >
+        {toolGroups.map((group, i) => (
+          <div key={i} className="flex w-full shrink-0 flex-col items-center gap-1">
+            {i > 0 && <div className="my-1.5 h-px w-8 bg-line" />}
+            {group.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                aria-label={label}
+                aria-pressed={tool === id}
+                title={label}
+                className={`tool-button shrink-0 ${tool === id ? 'tool-button-active' : ''}`}
+                onClick={() => setTool(id)}
+              >
+                <Icon size={18} />
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
     </aside>
   );
 }
