@@ -1,5 +1,11 @@
 import type { CanvasElement, StrokeDash } from '../types/editor';
 
+export interface ElementOrigin {
+  id: string;
+  x: number;
+  y: number;
+}
+
 export function getElementBounds(el: CanvasElement): { x: number; y: number; w: number; h: number } {
   switch (el.type) {
     case 'rect':
@@ -43,6 +49,20 @@ export function isElementInLasso(el: CanvasElement, pts: number[]) {
   return (
     [[b.x + b.w / 2, b.y + b.h / 2], [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]] as [number, number][]
   ).some(([x, y]) => pointInPolygon(x, y, pts));
+}
+
+export function getElementsBounds(elements: CanvasElement[]): { x: number; y: number; w: number; h: number } | null {
+  if (!elements.length) return null;
+  const bounds = elements.map(getElementBounds);
+  const x = Math.min(...bounds.map((bound) => bound.x));
+  const y = Math.min(...bounds.map((bound) => bound.y));
+  const right = Math.max(...bounds.map((bound) => bound.x + bound.w));
+  const bottom = Math.max(...bounds.map((bound) => bound.y + bound.h));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+export function moveElementOrigins(origins: ElementOrigin[], dx: number, dy: number): ElementOrigin[] {
+  return origins.map((origin) => ({ ...origin, x: origin.x + dx, y: origin.y + dy }));
 }
 
 export const DASH_MAP: Record<StrokeDash, number[]> = {

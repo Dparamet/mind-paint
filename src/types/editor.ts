@@ -113,8 +113,16 @@ export interface ImageElement extends BaseElement {
   src: string;
   width: number;
   height: number;
+  /** Non-destructive, normalized destination-out strokes applied at render time. */
+  erasures?: ImageEraseStroke[];
   /** Flood-fill raster: non-interactive background paint, excluded from selection */
   isFill?: boolean;
+}
+
+export interface ImageEraseStroke {
+  points: Array<{ x: number; y: number }>;
+  /** Brush diameter normalized against the shorter image edge. */
+  size: number;
 }
 
 export interface PolygonElement extends BaseElement {

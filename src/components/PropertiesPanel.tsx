@@ -8,7 +8,7 @@ function NumInput({ label, value, step = 1, onChange }: { label: string; value: 
       <input
         type="number"
         step={step}
-        className="w-full min-w-0 rounded border border-line bg-white px-1.5 py-0.5 text-xs outline-none focus:border-accent"
+        className="w-full min-w-0 rounded border border-line bg-paper px-1.5 py-0.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
         value={Math.round(value * 10) / 10}
         onChange={(e) => onChange(Number(e.target.value))}
       />

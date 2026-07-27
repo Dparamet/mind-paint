@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../store/useEditorStore';
-import type { RectElement } from '../types/editor';
+import type { ImageElement, RectElement } from '../types/editor';
 
 const BASE_LAYER = 'layer-base';
 
@@ -118,5 +118,29 @@ describe('store — updateElement undo', () => {
 
     useEditorStore.getState().updateElement('r1', { fill: '#123456' }, false);
     expect(useEditorStore.getState().history.length).toBe(historyLenAfterAdd);
+  });
+
+  it('undoes and serializes non-destructive image erasures', () => {
+    const image: ImageElement = {
+      id: 'image-1',
+      layerId: BASE_LAYER,
+      type: 'image',
+      src: 'data:image/png;base64,test',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 80,
+    };
+    useEditorStore.getState().addElement(image);
+    const erasures = [{ size: 0.1, points: [{ x: 0.5, y: 0.5 }] }];
+
+    useEditorStore.getState().updateElement(image.id, { erasures });
+    expect(useEditorStore.getState().toProject().elements[0]).toMatchObject({ erasures });
+
+    useEditorStore.getState().undo();
+    expect((useEditorStore.getState().elements[0] as ImageElement).erasures).toBeUndefined();
+
+    useEditorStore.getState().redo();
+    expect((useEditorStore.getState().elements[0] as ImageElement).erasures).toEqual(erasures);
   });
 });

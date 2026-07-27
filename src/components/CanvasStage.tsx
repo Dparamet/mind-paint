@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, RegularPolygon, Stage, Star as KonvaStar, Text, Transformer } from 'react-konva';
+import { Arrow, Circle as KonvaCircle, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, RegularPolygon, Stage, Star as KonvaStar, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
-import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
+import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
 import { useEditorStore } from '../store/useEditorStore';
-import type { CanvasElement, CircleElement, ImageElement, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
+import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
 
@@ -39,10 +40,15 @@ function useLoadedImage(src: string) {
 }
 
 function ImageNode({ element, selectable }: { element: ImageElement; selectable: boolean }) {
-  const image = useLoadedImage(element.src);
+  const { erasures = [], src, isFill, ...imageProps } = element;
+  const image = useLoadedImage(src);
+  const maskedImage = useMemo(
+    () => image && erasures.length ? renderMaskedImage(image, element.width, element.height, erasures) : image,
+    [erasures, image, element.height, element.width],
+  );
   // Fill rasters are background paint: never hit-tested, otherwise the
   // full-viewport image swallows every stage click (breaks marquee/lasso)
-  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable && !element.isFill} listening={!element.isFill} />;
+  return <KonvaImage image={maskedImage ?? undefined} {...imageProps} draggable={selectable && !isFill} listening={!isFill} />;
 }
 
 function isSelectable(el: CanvasElement) {
@@ -140,6 +146,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
+  const imageEraseRef = useRef<{ id: string; strokeIndex: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
   // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
@@ -157,7 +164,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const lassoLineRef = useRef<Konva.Line>(null);
   const lassoActiveRef = useRef(false);
   // Group move: drag inside an existing selection moves it instead of re-selecting
-  const groupMoveRef = useRef<{ start: { x: number; y: number }; origins: { id: string; x: number; y: number }[]; moved: boolean } | null>(null);
+  const groupMoveRef = useRef<{
+    start: { x: number; y: number };
+    origins: { id: string; x: number; y: number }[];
+    dx: number;
+    dy: number;
+    moved: boolean;
+  } | null>(null);
   const suppressClickRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
@@ -168,6 +181,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     () => layers.map((layer) => ({ layer, elements: elements.filter((element) => element.layerId === layer.id) })),
     [elements, layers],
   );
+  const editableLayerIds = useMemo(
+    () => new Set(layers.filter((layer) => layer.visible && !layer.locked).map((layer) => layer.id)),
+    [layers],
+  );
+  const movableSelection = useMemo(
+    () => elements.filter((element) => selectedElementIds.includes(element.id) && editableLayerIds.has(element.layerId)),
+    [editableLayerIds, elements, selectedElementIds],
+  );
+  const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -387,6 +409,41 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
+    const stage = stageRef.current;
+    const activeImageErase = imageEraseRef.current;
+    const hitNode = activeImageErase ? stage?.findOne(`#${activeImageErase.id}`) : stage?.getIntersection(screenPos);
+    const hitId = activeImageErase?.id ?? hitNode?.id();
+    const liveImage = useEditorStore.getState().elements.find(
+      (element): element is ImageElement => element.id === hitId && element.type === 'image' && !element.isFill,
+    );
+
+    if (liveImage && hitNode) {
+      const layerInfo = layers.find((layer) => layer.id === liveImage.layerId);
+      if (!layerInfo?.visible || layerInfo.locked) return;
+      const localPoint = hitNode.getAbsoluteTransform().copy().invert().point(screenPos);
+      const point = normalizeErasePoint(localPoint, liveImage.width, liveImage.height);
+
+      if (!activeImageErase) {
+        const stroke: ImageEraseStroke = {
+          points: [point],
+          size: Math.max(16, brushSize * 3) / Math.max(1, Math.min(liveImage.width, liveImage.height)),
+        };
+        const strokeIndex = liveImage.erasures?.length ?? 0;
+        imageEraseRef.current = { id: liveImage.id, strokeIndex };
+        updateElement(liveImage.id, { erasures: [...(liveImage.erasures ?? []), stroke] });
+      } else {
+        const strokes = liveImage.erasures ?? [];
+        const stroke = strokes[activeImageErase.strokeIndex];
+        if (!stroke) return;
+        const nextStroke = appendErasePoint(stroke, point);
+        if (nextStroke === stroke) return;
+        const nextStrokes = [...strokes];
+        nextStrokes[activeImageErase.strokeIndex] = nextStroke;
+        updateElement(liveImage.id, { erasures: nextStrokes }, false);
+      }
+      return;
+    }
+
     const worldPos = getPointer(true);
     // Cut freehand strokes into surviving pieces instead of deleting or
     // reconnecting the entire vector line when the eraser crosses its middle.
@@ -409,7 +466,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       }
     }
     // Intersection-based deletion for shapes, straight lines, arrows, etc.
-    const node = stageRef.current?.getIntersection(screenPos);
+    const node = stage?.getIntersection(screenPos);
     if (!node) return;
     const id = node.id();
     const el = elements.find((e) => e.id === id);
@@ -475,12 +532,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       // select tool with a single selection keeps Konva's own drag
       if (selectedElementIds.includes(hit) && (tool === 'lasso' || selectedElementIds.length > 1)) {
         const raw = getPointer(true) ?? point;
-        const editable = new Set(layers.filter((l) => l.visible && !l.locked).map(l => l.id));
         groupMoveRef.current = {
           start: raw,
           origins: elements
-            .filter((e) => selectedElementIds.includes(e.id) && editable.has(e.layerId))
+            .filter((e) => selectedElementIds.includes(e.id) && editableLayerIds.has(e.layerId))
             .map((e) => ({ id: e.id, x: e.x, y: e.y })),
+          dx: 0,
+          dy: 0,
           moved: false,
         };
         return;
@@ -767,10 +825,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const dy = p.y - g.start.y;
         // small threshold so a plain click (select) doesn't count as a move
         if (!g.moved && dx * dx + dy * dy < 4) return;
-        const first = !g.moved;
         g.moved = true;
-        // history snapshot only on the very first tracked update (pre-move positions)
-        g.origins.forEach((o, i) => updateElement(o.id, { x: o.x + dx, y: o.y + dy }, first && i === 0));
+        g.dx = dx;
+        g.dy = dy;
+        for (const origin of g.origins) {
+          const node = stageRef.current?.findOne(`#${origin.id}`);
+          node?.position({ x: origin.x + dx, y: origin.y + dy });
+        }
+        transformerRef.current?.getLayer()?.batchDraw();
       }
       return;
     }
@@ -855,10 +917,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       const g = groupMoveRef.current;
       if (g.moved) {
         suppressClickRef.current = true; // Konva fires click after mouseup; don't collapse selection
-        for (const o of g.origins) {
-          const el = elements.find((e) => e.id === o.id);
-          if (el) updateElement(o.id, { x: snapValue(el.x), y: snapValue(el.y) }, false);
-        }
+        moveElementOrigins(g.origins, g.dx, g.dy).forEach((position, index) => {
+          updateElement(
+            position.id,
+            { x: snapValue(position.x), y: snapValue(position.y) },
+            index === 0,
+          );
+        });
       }
       groupMoveRef.current = null;
       return;
@@ -905,6 +970,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     middlePanStart.current = null;
     drawStartRef.current = null;
     isErasingRef.current = false;
+    imageEraseRef.current = null;
     setIsMiddlePanning(false);
   }
 
@@ -1075,7 +1141,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (element.type === 'sticky') {
       return (
         <Group key={element.id} {...common}>
-          <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={8} shadowColor="#17202a" shadowOpacity={0.12} shadowBlur={12} />
+          <Rect width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} cornerRadius={8} shadowColor="#24313d" shadowOpacity={0.12} shadowBlur={12} />
           <Text text={element.text} x={14} y={14} width={element.width - 28} fontSize={element.fontSize} fill={element.stroke} />
         </Group>
       );
@@ -1101,8 +1167,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   return (
-    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-white">
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink shadow-soft">
+    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
           aria-label="Canvas zoom"
@@ -1129,7 +1195,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
         draggable={isSpacePressed}
-        className={`${showGrid ? 'bg-white [background-image:linear-gradient(#e8e8e8_1px,transparent_1px),linear-gradient(90deg,#e8e8e8_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-white'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
+        className={`${showGrid ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-panel'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1146,7 +1212,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         }}
       >
         <KonvaLayer listening={false}>
-          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#ffffff" />
+          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffaf0" />
         </KonvaLayer>
         {elementsByLayer.map(({ layer, elements: layerElements }) => (
           <KonvaLayer key={layer.id} visible={layer.visible} listening={!layer.locked}>
@@ -1155,6 +1221,50 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         ))}
         <KonvaLayer>
           <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
+          {selectionBounds && selectedElementIds.length > 1 && (tool === 'lasso' || tool === 'select') && (
+            <Group
+              id="selection-move-handle"
+              x={selectionBounds.x + selectionBounds.w / 2}
+              y={selectionBounds.y + selectionBounds.h / 2}
+              draggable
+              onMouseDown={(event) => {
+                event.cancelBubble = true;
+              }}
+              onTouchStart={(event) => {
+                event.cancelBubble = true;
+              }}
+              onDragStart={(event) => {
+                event.cancelBubble = true;
+                groupMoveRef.current = {
+                  start: { x: event.target.x(), y: event.target.y() },
+                  origins: movableSelection.map((element) => ({ id: element.id, x: element.x, y: element.y })),
+                  dx: 0,
+                  dy: 0,
+                  moved: false,
+                };
+              }}
+              onDragMove={(event) => {
+                const move = groupMoveRef.current;
+                if (!move) return;
+                move.dx = event.target.x() - move.start.x;
+                move.dy = event.target.y() - move.start.y;
+                move.moved = true;
+                for (const origin of move.origins) {
+                  const node = stageRef.current?.findOne(`#${origin.id}`);
+                  node?.position({ x: origin.x + move.dx, y: origin.y + move.dy });
+                }
+                transformerRef.current?.getLayer()?.batchDraw();
+              }}
+              onDragEnd={(event) => {
+                event.cancelBubble = true;
+                handleMouseUp();
+              }}
+            >
+              <KonvaCircle radius={13 / scale} fill="#0f766e" shadowColor="#17202a" shadowBlur={5 / scale} shadowOpacity={0.2} />
+              <Arrow points={[-6 / scale, 0, 6 / scale, 0]} stroke="#ffffff" fill="#ffffff" strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+              <Arrow points={[6 / scale, 0, -6 / scale, 0]} stroke="#ffffff" fill="#ffffff" strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+            </Group>
+          )}
           <Rect
             ref={marqueeKonvaRef}
             visible={false} x={0} y={0} width={0} height={0}
@@ -1249,7 +1359,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           >
             <textarea
               autoFocus
-              className="h-20 w-full resize-none rounded border border-line bg-white p-2 text-sm outline-none"
+              className="h-20 w-full resize-none rounded border border-line bg-paper p-2 text-sm outline-none focus:border-accent"
               placeholder="Add a comment…"
               value={commentDraft}
               onChange={(e) => setCommentDraft(e.target.value)}
@@ -1260,7 +1370,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             />
             <div className="mt-1 flex justify-end gap-2 text-xs">
               <button
-                className="rounded border border-line px-2 py-1 hover:border-coral hover:text-coral"
+                className="rounded border border-line px-2 py-1 hover:border-coral hover:bg-coral/10 hover:text-coral"
                 onClick={() => { updateElement(commentingId, { comment: undefined } as Partial<CanvasElement>); setCommentingId(null); }}
               >
                 Delete
@@ -1276,7 +1386,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       {selectedElementId && (
         <div className="absolute bottom-4 left-4 flex gap-2">
           <button
-            className="rounded-md border border-line bg-panel px-3 py-2 text-sm shadow-soft hover:border-coral hover:text-coral"
+            className="rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium shadow-soft hover:border-coral hover:bg-coral/10 hover:text-coral"
             onClick={() => {
               if (selectedElementIds.length) {
                 deleteSelectedElements();

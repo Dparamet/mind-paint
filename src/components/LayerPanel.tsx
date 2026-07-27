@@ -16,7 +16,7 @@ export function LayerPanel() {
 
   return (
     <aside className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-sky/10 px-4 py-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">Layers</h2>
         <button className="icon-button h-7 w-7" aria-label="Add layer" title="Add layer" onClick={addLayer}>
           <Plus size={14} />
@@ -29,8 +29,8 @@ export function LayerPanel() {
             key={layer.id}
             className={`rounded-lg border p-2 transition-colors cursor-pointer ${
               activeLayerId === layer.id
-                ? 'border-accent/40 bg-accent/5'
-                : 'border-line bg-white hover:border-accent/30'
+                ? 'border-accent/50 bg-accent/10'
+                : 'border-line bg-paper hover:border-sky/60'
             }`}
             onClick={() => setActiveLayerId(layer.id)}
           >
