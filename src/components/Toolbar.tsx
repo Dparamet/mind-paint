@@ -60,6 +60,7 @@ export function Toolbar() {
   const setTool = useEditorStore((s) => s.setTool);
   const [shapesOpen, setShapesOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const shapeTriggerRef = useRef<HTMLButtonElement>(null);
   const activeShape = shapeTools.find((entry) => entry.id === tool);
 
   useEffect(() => {
@@ -69,7 +70,10 @@ export function Toolbar() {
       if (event.key === 'Escape') setShapesOpen(false);
     };
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!popoverRef.current?.contains(event.target as Node)) setShapesOpen(false);
+      const target = event.target as Node;
+      if (!popoverRef.current?.contains(target) && !shapeTriggerRef.current?.contains(target)) {
+        setShapesOpen(false);
+      }
     };
 
     window.addEventListener('keydown', closeOnEscape);
@@ -94,7 +98,9 @@ export function Toolbar() {
             {i > 0 && <div className="my-1.5 h-px w-8 bg-line" />}
             {i === 2 && (
               <button
+                ref={shapeTriggerRef}
                 aria-label="Shapes"
+                aria-controls="shape-tools-menu"
                 aria-expanded={shapesOpen}
                 aria-haspopup="menu"
                 title="Shapes"
@@ -122,6 +128,7 @@ export function Toolbar() {
       </nav>
       {shapesOpen && (
         <div
+          id="shape-tools-menu"
           ref={popoverRef}
           role="menu"
           aria-label="Shape tools"

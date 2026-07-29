@@ -17,7 +17,8 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 | Circle / Ellipse | `C` | |
 | Line | — | |
 | Arrow | `A` | |
-| Text | `T` | Click to place; inline editor (Enter commit, Esc cancel) |
+| Shapes dropdown | — | Rectangle, Circle/Ellipse, Triangle, Diamond, Pentagon, Hexagon, Octagon, Star |
+| Text | `T` | Click to place; inline editor (`Enter` commit, `Shift+Enter` newline, `Esc` cancel) |
 | Sticky note | — | Double-click to edit inline; Enter commits, Esc cancels (blank sticky auto-deletes on Esc) |
 | Mind node | — | Double-click to edit inline |
 | Speech bubble | — | Double-click to edit inline |
@@ -59,11 +60,11 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 | Format | Notes |
 |--------|-------|
 | PNG @3x | |
-| PNG transparent | |
+| Transparent PNG | |
 | JPEG @3x | |
 | PDF | Basic single-page |
 | SVG | Raster-in-SVG wrapper |
-| JSON | Full project round-trip |
+| Project JSON | Full project round-trip |
 | Import JSON | Loads project from `.json` file |
 | Import image | From file or Ctrl+V paste |
 

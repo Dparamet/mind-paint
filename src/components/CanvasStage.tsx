@@ -7,6 +7,7 @@ import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUti
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
+import { shouldCommitInlineText } from '../utils/textEditorUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
@@ -1321,7 +1322,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-              else if (e.key === 'Enter' && !e.shiftKey && el.type === 'text') { e.preventDefault(); commitEdit(); }
+              else if (shouldCommitInlineText(e.key, e.shiftKey, el.type)) { e.preventDefault(); commitEdit(); }
             }}
           />
         );
