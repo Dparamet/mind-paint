@@ -1,6 +1,6 @@
 import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
@@ -19,7 +19,8 @@ interface TopbarProps {
 export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
-  const exportRef = useRef<HTMLDetailsElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const state = useEditorStore();
 
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
@@ -29,19 +30,34 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     const idSet = new Set(state.selectedElementIds);
     return state.elements.filter((e) => idSet.has(e.id));
   }, [state.elements, state.selectedElementIds]);
+  const selectedText = selectedEls.find((element) => element.type === 'text');
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;
+  const textFontSize = selectedText?.fontSize ?? state.fontSize;
+  const textFontFamily = selectedText?.fontFamily ?? state.fontFamily;
+  const textBold = selectedText ? selectedText.fontStyle?.includes('bold') ?? false : state.bold;
+  const textItalic = selectedText ? selectedText.fontStyle?.includes('italic') ?? false : state.italic;
+  const textAlign = selectedText?.align ?? state.textAlign;
 
   useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
-        exportRef.current.open = false;
+    if (!exportOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportOpen(false);
+    };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
       }
     };
-    window.addEventListener('mousedown', onMouseDown);
-    return () => window.removeEventListener('mousedown', onMouseDown);
-  }, []);
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('pointerdown', closeOnOutsidePointer);
+    };
+  }, [exportOpen]);
 
   function handleStrokeChange(color: string) {
     state.setStrokeColor(color);
@@ -71,20 +87,27 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
       .forEach((el) => state.updateElement(el.id, { fontFamily: family } as Partial<CanvasElement>));
   }
 
-  function handleBold(bold: boolean) {
+  function handleBold(bold: boolean, italic = state.italic) {
     state.setBold(bold);
-    const style = `${state.italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`;
+    const style = `${italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`.trim();
     selectedEls
       .filter((e) => e.type === 'text')
       .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
   }
 
-  function handleItalic(italic: boolean) {
+  function handleItalic(italic: boolean, bold = state.bold) {
     state.setItalic(italic);
-    const style = `${italic ? 'italic ' : ''}${state.bold ? 'bold' : 'normal'}`;
+    const style = `${italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`.trim();
     selectedEls
       .filter((e) => e.type === 'text')
       .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
+  }
+
+  function handleTextAlign(align: 'left' | 'center' | 'right') {
+    state.setTextAlign(align);
+    selectedEls
+      .filter((element) => element.type === 'text')
+      .forEach((element) => state.updateElement(element.id, { align } as Partial<CanvasElement>));
   }
 
   function handleOpacity(opacity: number) {
@@ -209,8 +232,11 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function runExport(action: () => void) {
-    action();
-    if (exportRef.current) exportRef.current.open = false;
+    try {
+      action();
+    } finally {
+      setExportOpen(false);
+    }
   }
 
   const selOpacity = selectedEls[0]?.opacity ?? 1;
@@ -221,11 +247,11 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
   const exportItems = [
     { label: 'PNG @3x', action: () => exportImage('image/png') },
-    { label: 'PNG transparent', action: () => exportImage('image/png', true) },
+    { label: 'Transparent PNG', action: () => exportImage('image/png', true) },
     { label: 'JPEG @3x', action: () => exportImage('image/jpeg') },
-    { label: 'PDF', action: exportPdf },
     { label: 'SVG', action: exportSvg },
-    { label: 'JSON', action: () => downloadJson(state.toProject()) },
+    { label: 'PDF', action: exportPdf },
+    { label: 'Project JSON', action: () => downloadJson(state.toProject()) },
   ];
 
   return (
@@ -243,7 +269,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
         <div className="flex items-center gap-2">
           <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={handleStrokeChange} />
-          <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
+          <ColorPicker label="Fill" value={selectedText?.fill ?? state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
           {hasSelection && (
             <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
           )}
@@ -255,7 +281,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
             <select
               aria-label="Font family"
               className="rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-              value={state.fontFamily}
+              value={textFontFamily}
               onChange={(e) => handleFontFamily(e.target.value)}
             >
               <option value="Inter, sans-serif">Inter</option>
@@ -267,19 +293,41 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
               aria-label="Font size"
               className="w-16 rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
               type="number" min="10" max="96" step="2"
-              value={state.fontSize}
+              value={textFontSize}
               onChange={(e) => handleFontSize(Number(e.target.value))}
             />
             <button
-              aria-label="Bold" aria-pressed={state.bold} title="Bold"
-              className={`icon-button h-8 w-8 font-bold ${state.bold ? 'border-accent bg-accent/10 text-accent' : ''}`}
-              onClick={() => handleBold(!state.bold)}
+              aria-label="Bold" aria-pressed={textBold} title="Bold"
+              className={`icon-button h-8 w-8 font-bold ${textBold ? 'border-accent bg-accent/10 text-accent' : ''}`}
+              onClick={() => handleBold(!textBold, textItalic)}
             >B</button>
             <button
-              aria-label="Italic" aria-pressed={state.italic} title="Italic"
-              className={`icon-button h-8 w-8 italic ${state.italic ? 'border-accent bg-accent/10 text-accent' : ''}`}
-              onClick={() => handleItalic(!state.italic)}
+              aria-label="Italic" aria-pressed={textItalic} title="Italic"
+              className={`icon-button h-8 w-8 italic ${textItalic ? 'border-accent bg-accent/10 text-accent' : ''}`}
+              onClick={() => handleItalic(!textItalic, textBold)}
             >I</button>
+            <div className="flex items-center gap-0.5 rounded-md border border-line bg-paper p-0.5">
+              {(['left', 'center', 'right'] as const).map((align) => (
+                <button
+                  key={align}
+                  aria-label={`Text align ${align}`}
+                  aria-pressed={textAlign === align}
+                  title={`Text align ${align}`}
+                  className={`icon-button h-7 w-7 border-transparent ${
+                    textAlign === align ? 'bg-accent/10 text-accent' : ''
+                  }`}
+                  onClick={() => handleTextAlign(align)}
+                >
+                  {align === 'left' ? (
+                    <AlignLeft size={14} />
+                  ) : align === 'center' ? (
+                    <AlignCenter size={14} />
+                  ) : (
+                    <AlignRight size={14} />
+                  )}
+                </button>
+              ))}
+            </div>
           </>
         ) : state.tool === 'fill' ? (
           <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
@@ -399,18 +447,37 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           <Trash2 size={15} />
         </button>
         <div className="mx-1 h-5 w-px bg-line" />
-        <details ref={exportRef} className="relative">
-          <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent">
-            <Download size={14} /> Export
-          </summary>
-          <div className="absolute left-0 top-full z-50 mt-1 min-w-max overflow-hidden rounded-md border border-line bg-panel shadow-soft">
-            {exportItems.map(({ label, action }) => (
-              <button key={label} className="block w-full px-4 py-2 text-left text-sm hover:bg-accent/10" onClick={() => runExport(action)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </details>
+        <div ref={exportRef} className="relative">
+          <button
+            aria-label="Export"
+            aria-controls="export-formats-menu"
+            aria-expanded={exportOpen}
+            aria-haspopup="menu"
+            className="flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent"
+            onClick={() => setExportOpen((open) => !open)}
+          >
+            <Download size={14} /> Export <ChevronDown size={12} />
+          </button>
+          {exportOpen && (
+            <div
+              id="export-formats-menu"
+              role="menu"
+              aria-label="Export formats"
+              className="absolute left-0 top-full z-50 mt-1 min-w-44 overflow-hidden rounded-md border border-line bg-panel py-1 shadow-soft"
+            >
+              {exportItems.map(({ label, action }) => (
+                <button
+                  key={label}
+                  role="menuitem"
+                  className="block w-full px-4 py-2 text-left text-sm hover:bg-accent/10"
+                  onClick={() => runExport(action)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="icon-button h-8 w-8" title="Import JSON" aria-label="Import JSON" onClick={() => jsonInputRef.current?.click()}>
           <FileUp size={15} />
         </button>
