@@ -156,7 +156,6 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     points?: number[];
     patch: Partial<CanvasElement> | null;
   } | null>(null);
-  const editingCancelledRef = useRef(false);
   // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -478,9 +477,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function commitEdit() {
-    if (editingCancelledRef.current) { editingCancelledRef.current = false; return; }
-    if (!editingId) return;
-    const id = editingId;
+    const id = editingIdRef.current;
+    if (!id) return;
     const el = elements.find((e) => e.id === id);
     const stickyLike = el && isStickyLike(el.type);
     setEditingId(null);
@@ -492,9 +490,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function cancelEdit() {
-    editingCancelledRef.current = true;
-    if (!editingId) return;
-    const id = editingId;
+    const id = editingIdRef.current;
+    if (!id) return;
     setEditingId(null);
     const el = elements.find((e) => e.id === id);
     if (el && 'text' in el && !el.text) deleteElement(id);

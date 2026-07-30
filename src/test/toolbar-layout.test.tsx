@@ -121,7 +121,10 @@ describe('Toolbar layout', () => {
 
     await user.click(screen.getByRole('button', { name: 'Export' }));
 
-    expect(screen.getByRole('menu', { name: 'Export formats' })).toBeInTheDocument();
+    const toolbar = screen.getByRole('toolbar', { name: 'Canvas actions' });
+    const menu = screen.getByRole('menu', { name: 'Export formats' });
+    expect(menu).toBeInTheDocument();
+    expect(toolbar).not.toContainElement(menu);
     for (const name of ['PNG @3x', 'Transparent PNG', 'JPEG @3x', 'SVG', 'PDF', 'Project JSON']) {
       expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
     }
