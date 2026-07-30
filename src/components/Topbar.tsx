@@ -1,6 +1,7 @@
 import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
@@ -20,7 +21,10 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportMenuPosition, setExportMenuPosition] = useState({ left: 0, top: 0 });
   const state = useEditorStore();
 
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
@@ -43,19 +47,38 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   useEffect(() => {
     if (!exportOpen) return;
 
+    const positionMenu = () => {
+      const rect = exportButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = exportMenuRef.current?.offsetWidth || 176;
+      setExportMenuPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+        top: rect.bottom + 4,
+      });
+    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setExportOpen(false);
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        exportRef.current
+        && !exportRef.current.contains(target)
+        && !exportMenuRef.current?.contains(target)
+      ) {
         setExportOpen(false);
       }
     };
+    positionMenu();
     window.addEventListener('keydown', closeOnEscape);
     window.addEventListener('pointerdown', closeOnOutsidePointer);
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
     return () => {
       window.removeEventListener('keydown', closeOnEscape);
       window.removeEventListener('pointerdown', closeOnOutsidePointer);
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
     };
   }, [exportOpen]);
 
@@ -449,6 +472,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <div className="mx-1 h-5 w-px bg-line" />
         <div ref={exportRef} className="relative">
           <button
+            ref={exportButtonRef}
             aria-label="Export"
             aria-controls="export-formats-menu"
             aria-expanded={exportOpen}
@@ -458,12 +482,14 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           >
             <Download size={14} /> Export <ChevronDown size={12} />
           </button>
-          {exportOpen && (
+          {exportOpen && createPortal(
             <div
+              ref={exportMenuRef}
               id="export-formats-menu"
               role="menu"
               aria-label="Export formats"
-              className="absolute left-0 top-full z-50 mt-1 min-w-44 overflow-hidden rounded-md border border-line bg-panel py-1 shadow-soft"
+              className="fixed z-[100] min-w-44 overflow-hidden rounded-md border border-line bg-panel py-1 shadow-soft"
+              style={exportMenuPosition}
             >
               {exportItems.map(({ label, action }) => (
                 <button
@@ -476,7 +502,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
                 </button>
               ))}
             </div>
-          )}
+          , document.body)}
         </div>
         <button className="icon-button h-8 w-8" title="Import JSON" aria-label="Import JSON" onClick={() => jsonInputRef.current?.click()}>
           <FileUp size={15} />
