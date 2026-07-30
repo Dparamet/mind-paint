@@ -192,6 +192,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
 
   useEffect(() => {
+    const id = editingIdRef.current;
+    if (!id || elements.some((element) => element.id === id)) return;
+    editingIdRef.current = null;
+    _setEditingId(null);
+    setEditingText('');
+  }, [elements]);
+
+  useEffect(() => {
     const stage = stageRef.current;
     const transformer = transformerRef.current;
     if (!stage || !transformer) return;

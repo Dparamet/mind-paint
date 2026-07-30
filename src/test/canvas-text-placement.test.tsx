@@ -1,5 +1,5 @@
 import { createRef, forwardRef, useImperativeHandle, type ReactNode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Konva from 'konva';
 import { CanvasStage } from '../components/CanvasStage';
@@ -88,5 +88,19 @@ describe('Canvas text placement', () => {
     expect(useEditorStore.getState().elements).toEqual([
       expect.objectContaining({ type: 'text', text: 'ข้อความใหม่' }),
     ]);
+  });
+
+  it('allows text placement after the active draft is removed externally', () => {
+    const stageRef = createRef<Konva.Stage | null>();
+    render(<CanvasStage stageRef={stageRef} />);
+
+    fireEvent.mouseDown(screen.getByTestId('canvas-stage'));
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+
+    act(() => useEditorStore.getState().clearCanvas());
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByTestId('canvas-stage'));
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 });
