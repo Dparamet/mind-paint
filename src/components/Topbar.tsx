@@ -8,6 +8,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import { CANVAS_BACKGROUND_ID, getExportBackground, withTemporaryBackground } from '../utils/backgroundUtils';
 import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
@@ -195,8 +196,21 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     updates.forEach(([id, patch], i) => state.updateElement(id, patch, i === 0));
   }
 
+  function captureStage(
+    mimeType: 'image/png' | 'image/jpeg',
+    pixelRatio: number,
+    quality: number,
+    forceTransparent = false,
+  ) {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const background = stage.findOne(`#${CANVAS_BACKGROUND_ID}`);
+    const fill = getExportBackground(state.backgroundMode, mimeType, forceTransparent);
+    return withTemporaryBackground(background, fill, () => stage.toDataURL({ pixelRatio, mimeType, quality }));
+  }
+
   function exportSvg() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+    const dataUrl = captureStage('image/png', 2, 1);
     if (dataUrl) {
       const name = state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint';
       downloadSvg(dataUrl, state.width, state.height, `${name}.svg`);
@@ -233,19 +247,14 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const bgRect = stage.findOne('Rect');
-    const oldFill = bgRect?.attrs.fill;
-    if (transparent) bgRect?.setAttr('fill', '#00000000');
-    const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType, quality: 0.92 });
-    if (transparent) bgRect?.setAttr('fill', oldFill);
+    const dataUrl = captureStage(mimeType, 3, 0.92, transparent);
+    if (!dataUrl) return;
     const ext = mimeType === 'image/png' ? 'png' : 'jpg';
     downloadDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}@3x.${ext}`);
   }
 
   function exportPdf() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
+    const dataUrl = captureStage('image/jpeg', 2, 0.9);
     if (dataUrl) downloadPdfFromDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}.pdf`);
   }
 
