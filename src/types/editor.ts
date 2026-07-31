@@ -29,6 +29,7 @@ export interface Point {
 }
 
 export type StrokeDash = 'solid' | 'dashed' | 'dotted';
+export type BackgroundMode = 'normal' | 'transparent' | 'greenScreen';
 
 export interface BaseElement {
   id: string;
@@ -78,6 +79,7 @@ export interface TextElement extends BaseElement {
   type: 'text';
   text: string;
   width: number;
+  height?: number;
   fontSize: number;
   fontFamily: string;
   fontStyle?: string;
@@ -171,6 +173,7 @@ export interface EditorDocument {
   height: number;
   layers: Layer[];
   elements: CanvasElement[];
+  backgroundMode: BackgroundMode;
   createdAt: number;
   updatedAt: number;
 }

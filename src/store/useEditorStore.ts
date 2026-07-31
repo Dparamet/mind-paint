@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  BackgroundMode,
   CanvasElement,
   EditorDocument,
   EditorSettings,
@@ -13,6 +14,11 @@ import { saveProject } from '../db/indexedDb';
 const settingsKey = 'mind-paint-settings';
 const lastProjectKey = 'mind-paint-last-project-id';
 const defaultLayerId = 'layer-base';
+const defaultBackgroundMode: BackgroundMode = 'normal';
+
+function normalizeBackgroundMode(value: unknown): BackgroundMode {
+  return value === 'transparent' || value === 'greenScreen' ? value : defaultBackgroundMode;
+}
 
 const defaultSettings: EditorSettings = {
   tool: 'select',
@@ -63,6 +69,7 @@ function createDocument(): EditorDocument {
     height: 1000,
     layers: [{ id: defaultLayerId, name: 'Layer 1', visible: true, locked: false }],
     elements: [],
+    backgroundMode: defaultBackgroundMode,
     createdAt: now,
     updatedAt: now,
   };
@@ -80,6 +87,7 @@ interface EditorStore extends EditorDocument, EditorSettings {
   isSaving: boolean;
   saveStatus: SaveStatus;
   setTool: (tool: Tool) => void;
+  setBackgroundMode: (mode: BackgroundMode) => void;
   setStrokeColor: (color: string) => void;
   setFillColor: (color: string) => void;
   setBrushSize: (size: number) => void;
@@ -201,6 +209,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       persistSettings({ ...pickSettings(state), tool });
       return { tool };
     }),
+  setBackgroundMode: (backgroundMode) =>
+    set({ backgroundMode, updatedAt: Date.now(), saveStatus: 'dirty' }),
   setStrokeColor: (strokeColor) =>
     set((state) => {
       const recentColors = pushRecent(state.recentColors, strokeColor);
@@ -453,6 +463,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       localStorage.setItem(lastProjectKey, project.id);
       return {
       ...project,
+      backgroundMode: normalizeBackgroundMode((project as Partial<SavedProject>).backgroundMode),
       activeLayerId: project.layers[0]?.id ?? defaultLayerId,
       ...selection([]),
       history: [],
@@ -469,6 +480,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       height: state.height,
       layers: state.layers,
       elements: state.elements,
+      backgroundMode: state.backgroundMode,
       createdAt: state.createdAt,
       updatedAt: Date.now(),
     };
