@@ -93,6 +93,9 @@ function validateImportedProject(value: unknown): SavedProject {
     height: typeof project.height === 'number' ? project.height : 1000,
     layers: project.layers as EditorDocument['layers'],
     elements: project.elements as EditorDocument['elements'],
+    backgroundMode: project.backgroundMode === 'transparent' || project.backgroundMode === 'greenScreen'
+      ? project.backgroundMode
+      : 'normal',
     createdAt: typeof project.createdAt === 'number' ? project.createdAt : now,
     updatedAt: now,
   };

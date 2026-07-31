@@ -11,8 +11,8 @@ export function getCanvasBackgroundFill(mode: BackgroundMode): string {
 type ExportMimeType = 'image/png' | 'image/jpeg';
 
 interface BackgroundNode {
-  getAttr: (key: string) => unknown;
-  setAttr: (key: string, value: unknown) => unknown;
+  getAttr: (key: string) => string;
+  setAttr: (key: string, value: string) => unknown;
 }
 
 export function getExportBackground(
