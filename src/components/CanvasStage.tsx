@@ -8,6 +8,7 @@ import { erasePolyline, floodFillMask, removeContiguousBackground } from '../uti
 import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
+import { normalizeTextBox } from '../utils/textBoxUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
@@ -171,6 +172,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     dy: number;
     moved: boolean;
   } | null>(null);
+  const textDraftRef = useRef<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
+  const textDraftKonvaRef = useRef<Konva.Rect>(null);
   const suppressClickRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
@@ -781,26 +787,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'text') {
       drawingId.current = null;
-      const element: TextElement = {
-        id,
-        layerId: activeLayerId,
-        type: 'text',
-        x: point.x,
-        y: point.y,
-        text: '',
-        width: 260,
-        fontSize,
-        fontFamily,
-        fontStyle,
-        align: textAlign,
-        stroke: strokeColor,
-        fill: strokeColor,
-        strokeWidth: 0,
-      };
-      addElement(element);
-      setSelectedElementId(id);
-      setEditingId(id);
-      setEditingText('');
+      textDraftRef.current = { start: point, current: point };
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.setAttrs({ x: point.x, y: point.y, width: 0, height: 0 });
+        textDraftKonvaRef.current.visible(true);
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
+      }
       return;
     }
   }
@@ -874,6 +866,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       return;
     }
 
+    if (textDraftRef.current && tool === 'text') {
+      const point = getPointer();
+      if (!point) return;
+      textDraftRef.current.current = point;
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.setAttrs(normalizeTextBox(textDraftRef.current.start, point));
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
+      }
+      return;
+    }
+
     const id = drawingId.current;
     const draft = drawDraftRef.current;
     const point = getPointer();
@@ -932,6 +935,36 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         });
       }
       groupMoveRef.current = null;
+      return;
+    }
+    if (textDraftRef.current) {
+      const draft = textDraftRef.current;
+      const end = getPointer() ?? draft.current;
+      const bounds = normalizeTextBox(draft.start, end);
+      const id = crypto.randomUUID();
+      const element: TextElement = {
+        id,
+        layerId: activeLayerId,
+        type: 'text',
+        ...bounds,
+        text: '',
+        fontSize,
+        fontFamily,
+        fontStyle,
+        align: textAlign,
+        stroke: strokeColor,
+        fill: strokeColor,
+        strokeWidth: 0,
+      };
+      textDraftRef.current = null;
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.visible(false);
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
+      }
+      addElement(element);
+      setSelectedElementId(id);
+      setEditingId(id);
+      setEditingText('');
       return;
     }
     if (lassoActiveRef.current) {
@@ -1056,6 +1089,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         x: node.x(),
         y: node.y(),
         width: Math.max(80, (element as TextElement).width * scaleX),
+        height: Math.max(36, ((element as TextElement).height ?? 72) * scaleY),
         rotation: node.rotation(),
       });
     }
@@ -1143,7 +1177,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if (element.type === 'circle') return <Ellipse key={element.id} {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
     if (element.type === 'polygon') return <RegularPolygon key={element.id} {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
     if (element.type === 'star') return <KonvaStar key={element.id} {...common} numPoints={(element as StarElement).numPoints} outerRadius={(element as StarElement).outerRadius} innerRadius={(element as StarElement).innerRadius} />;
-    if (element.type === 'text') return <Text key={element.id} {...common} text={element.text} width={element.width} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
+    if (element.type === 'text') return <Text key={element.id} {...common} text={element.text} width={element.width} height={element.height} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
     if (element.type === 'sticky') {
       return (
         <Group key={element.id} {...common}>
@@ -1227,6 +1261,19 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         ))}
         <KonvaLayer>
           <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
+          <Rect
+            ref={textDraftKonvaRef}
+            visible={false}
+            x={0}
+            y={0}
+            width={0}
+            height={0}
+            stroke="#0f766e"
+            strokeWidth={1.5 / scale}
+            dash={[6 / scale, 4 / scale]}
+            fill="rgba(15,118,110,0.08)"
+            listening={false}
+          />
           {selectionBounds && selectedElementIds.length > 1 && (tool === 'lasso' || tool === 'select') && (
             <Group
               id="selection-move-handle"
@@ -1297,7 +1344,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const rawFs = (el as { fontSize?: number }).fontSize;
         const fs = rawFs != null ? rawFs * scale : 16;
         const stickyLike = isStickyLike(el.type);
-        const elH = ('height' in el ? (el as { height: number }).height : 0) * scale;
+        const elH = ('height' in el && typeof el.height === 'number' ? el.height : 0) * scale;
         return (
           <textarea
             key={editingId}
@@ -1315,6 +1362,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
                 color: el.stroke ?? '#17202a',
                 boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
               } : {
+                height: elH || Math.max(72, fs * 3),
                 minHeight: Math.max(32, fs * 2),
                 border: '2px solid #0f766e',
                 borderRadius: '4px',
