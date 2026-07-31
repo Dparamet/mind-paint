@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../store/useEditorStore';
-import type { ImageElement, RectElement } from '../types/editor';
+import type { ImageElement, RectElement, SavedProject } from '../types/editor';
 
 const BASE_LAYER = 'layer-base';
 
@@ -142,5 +142,24 @@ describe('store — updateElement undo', () => {
 
     useEditorStore.getState().redo();
     expect((useEditorStore.getState().elements[0] as ImageElement).erasures).toEqual(erasures);
+  });
+});
+
+describe('store — project background', () => {
+  it('persists the selected project background mode', () => {
+    useEditorStore.getState().setBackgroundMode('greenScreen');
+
+    expect(useEditorStore.getState().backgroundMode).toBe('greenScreen');
+    expect(useEditorStore.getState().toProject().backgroundMode).toBe('greenScreen');
+    expect(useEditorStore.getState().saveStatus).toBe('dirty');
+  });
+
+  it('defaults older projects to a normal background', () => {
+    const legacy = { ...useEditorStore.getState().toProject() } as Record<string, unknown>;
+    delete legacy.backgroundMode;
+
+    useEditorStore.getState().loadProject(legacy as unknown as SavedProject);
+
+    expect(useEditorStore.getState().backgroundMode).toBe('normal');
   });
 });

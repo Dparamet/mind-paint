@@ -2,11 +2,13 @@ import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
+import { BackgroundMenu } from './BackgroundMenu';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import { CANVAS_BACKGROUND_ID, getExportBackground, withTemporaryBackground } from '../utils/backgroundUtils';
 import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
@@ -194,8 +196,21 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     updates.forEach(([id, patch], i) => state.updateElement(id, patch, i === 0));
   }
 
+  function captureStage(
+    mimeType: 'image/png' | 'image/jpeg',
+    pixelRatio: number,
+    quality: number,
+    forceTransparent = false,
+  ) {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const background = stage.findOne(`#${CANVAS_BACKGROUND_ID}`);
+    const fill = getExportBackground(state.backgroundMode, mimeType, forceTransparent);
+    return withTemporaryBackground(background, fill, () => stage.toDataURL({ pixelRatio, mimeType, quality }));
+  }
+
   function exportSvg() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+    const dataUrl = captureStage('image/png', 2, 1);
     if (dataUrl) {
       const name = state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint';
       downloadSvg(dataUrl, state.width, state.height, `${name}.svg`);
@@ -232,19 +247,14 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const bgRect = stage.findOne('Rect');
-    const oldFill = bgRect?.attrs.fill;
-    if (transparent) bgRect?.setAttr('fill', '#00000000');
-    const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType, quality: 0.92 });
-    if (transparent) bgRect?.setAttr('fill', oldFill);
+    const dataUrl = captureStage(mimeType, 3, 0.92, transparent);
+    if (!dataUrl) return;
     const ext = mimeType === 'image/png' ? 'png' : 'jpg';
     downloadDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}@3x.${ext}`);
   }
 
   function exportPdf() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
+    const dataUrl = captureStage('image/jpeg', 2, 0.9);
     if (dataUrl) downloadPdfFromDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}.pdf`);
   }
 
@@ -469,6 +479,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <button className="icon-button h-8 w-8 hover:border-coral hover:bg-coral/10 hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
           <Trash2 size={15} />
         </button>
+        <BackgroundMenu value={state.backgroundMode} onChange={state.setBackgroundMode} />
         <div className="mx-1 h-5 w-px bg-line" />
         <div ref={exportRef} className="relative">
           <button

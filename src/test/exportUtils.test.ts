@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { downloadSvg } from '../utils/exportUtils';
+import { downloadSvg, readJsonFile } from '../utils/exportUtils';
 
 beforeEach(() => {
   vi.stubGlobal('URL', {
@@ -58,5 +58,22 @@ describe('downloadSvg', () => {
       expect(text).toContain('href="data:image/png;base64,XYZ"');
       expect(text).toContain('<svg');
     });
+  });
+});
+
+describe('readJsonFile', () => {
+  it('defaults legacy project backgrounds to normal', async () => {
+    const file = new File([
+      JSON.stringify({
+        id: 'legacy-project',
+        name: 'Legacy project',
+        width: 800,
+        height: 600,
+        layers: [{ id: 'layer-base', name: 'Layer 1', visible: true, locked: false }],
+        elements: [],
+      }),
+    ], 'legacy.json', { type: 'application/json' });
+
+    await expect(readJsonFile(file)).resolves.toMatchObject({ backgroundMode: 'normal' });
   });
 });

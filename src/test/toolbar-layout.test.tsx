@@ -74,7 +74,9 @@ describe('Toolbar layout', () => {
   it('keeps canvas actions reachable when the workspace is narrow', () => {
     render(<Topbar stageRef={createRef<Konva.Stage | null>()} onOpenSettings={() => undefined} />);
 
-    expect(screen.getByRole('toolbar', { name: 'Canvas actions' })).toHaveClass('overflow-x-auto');
+    const toolbar = screen.getByRole('toolbar', { name: 'Canvas actions' });
+    expect(toolbar).toHaveClass('overflow-x-auto');
+    expect(toolbar).toContainElement(screen.getByRole('button', { name: 'Background: Normal' }));
   });
 
   it('shows and updates formatting for the selected text element', async () => {

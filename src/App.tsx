@@ -17,7 +17,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const saveCurrentProject = useEditorStore((state) => state.saveCurrentProject);
   const loadProject = useEditorStore((state) => state.loadProject);
-  const autosaveKey = useEditorStore((state) => `${state.id}:${state.updatedAt}:${state.elements.length}:${state.layers.length}`);
+  const autosaveKey = useEditorStore((state) => `${state.id}:${state.updatedAt}:${state.elements.length}:${state.layers.length}:${state.backgroundMode}`);
   const saveStatus = useEditorStore((state) => state.saveStatus);
 
   useEffect(() => {
