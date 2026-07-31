@@ -7,6 +7,7 @@ import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUti
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
+import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgroundUtils';
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
 import { normalizeTextBox } from '../utils/textBoxUtils';
 import { useEditorStore } from '../store/useEditorStore';
@@ -68,6 +69,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     layers,
     elements,
     tool,
+    backgroundMode,
     activeLayerId,
     strokeColor,
     fillColor,
@@ -101,6 +103,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       layers: s.layers,
       elements: s.elements,
       tool: s.tool,
+      backgroundMode: s.backgroundMode,
       activeLayerId: s.activeLayerId,
       strokeColor: s.strokeColor,
       fillColor: s.fillColor,
@@ -196,6 +199,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     [editableLayerIds, elements, selectedElementIds],
   );
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
+  const stageSurfaceClass = backgroundMode === 'transparent'
+    ? 'bg-white [background-image:linear-gradient(45deg,#cfe4db_25%,transparent_25%),linear-gradient(-45deg,#cfe4db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cfe4db_75%),linear-gradient(-45deg,transparent_75%,#cfe4db_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
+    : backgroundMode === 'greenScreen'
+      ? 'bg-[#00FF00]'
+      : showGrid
+        ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]'
+        : 'bg-panel';
 
   useEffect(() => {
     const id = editingIdRef.current;
@@ -1235,7 +1245,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
         draggable={isSpacePressed}
-        className={`${showGrid ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-panel'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
+        className={`${stageSurfaceClass} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1252,7 +1262,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         }}
       >
         <KonvaLayer listening={false}>
-          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffaf0" />
+          <Rect
+            id={CANVAS_BACKGROUND_ID}
+            x={-100000}
+            y={-100000}
+            width={200000}
+            height={200000}
+            fill={getCanvasBackgroundFill(backgroundMode)}
+            listening={false}
+          />
         </KonvaLayer>
         {elementsByLayer.map(({ layer, elements: layerElements }) => (
           <KonvaLayer key={layer.id} visible={layer.visible} listening={!layer.locked}>

@@ -2,6 +2,7 @@ import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
+import { BackgroundMenu } from './BackgroundMenu';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
@@ -469,6 +470,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <button className="icon-button h-8 w-8 hover:border-coral hover:bg-coral/10 hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
           <Trash2 size={15} />
         </button>
+        <BackgroundMenu value={state.backgroundMode} onChange={state.setBackgroundMode} />
         <div className="mx-1 h-5 w-px bg-line" />
         <div ref={exportRef} className="relative">
           <button
