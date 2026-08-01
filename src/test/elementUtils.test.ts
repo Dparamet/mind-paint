@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getElementBounds, DASH_MAP } from '../utils/elementUtils';
+import { getElementBounds, DASH_MAP, lineHeadPatch } from '../utils/elementUtils';
 import type { CanvasElement } from '../types/editor';
 
 const BASE = { id: 'x', layerId: 'l', stroke: '#000', fill: '#fff', strokeWidth: 1 };
@@ -92,5 +92,25 @@ describe('DASH_MAP', () => {
 
   it('dotted first value is very small (dot-like)', () => {
     expect(DASH_MAP.dotted[0]).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('lineHeadPatch', () => {
+  it('maps no head to a plain line', () => {
+    expect(lineHeadPatch('none')).toEqual({ type: 'line' });
+  });
+
+  it.each([
+    ['end', false, true],
+    ['start', true, false],
+    ['both', true, true],
+  ] as const)('maps %s to the correct arrow endpoints', (head, pointerAtBeginning, pointerAtEnding) => {
+    expect(lineHeadPatch(head)).toMatchObject({
+      type: 'arrow',
+      pointerAtBeginning,
+      pointerAtEnding,
+      pointerLength: 18,
+      pointerWidth: 18,
+    });
   });
 });

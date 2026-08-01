@@ -219,31 +219,39 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
   async function uploadImage(file: File | undefined) {
     if (!file || !canAddImage) return;
-    const src = await fileToDataUrl(file);
-    const size = await dataUrlToImageSize(src);
-    const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
-    const element: ImageElement = {
-      id: crypto.randomUUID(),
-      layerId: state.activeLayerId,
-      type: 'image',
-      src,
-      x: 160,
-      y: 120,
-      width: Math.round(size.width * ratio),
-      height: Math.round(size.height * ratio),
-      stroke: '#00000000',
-      fill: '#00000000',
-      strokeWidth: 0,
-    };
-    state.addElement(element);
-    state.setSelectedElementId(element.id);
+    try {
+      const src = await fileToDataUrl(file);
+      const size = await dataUrlToImageSize(src);
+      const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
+      const element: ImageElement = {
+        id: crypto.randomUUID(),
+        layerId: state.activeLayerId,
+        type: 'image',
+        src,
+        x: 160,
+        y: 120,
+        width: Math.round(size.width * ratio),
+        height: Math.round(size.height * ratio),
+        stroke: '#00000000',
+        fill: '#00000000',
+        strokeWidth: 0,
+      };
+      state.addElement(element);
+      state.setSelectedElementId(element.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import image.');
+    }
   }
 
   async function importJson(file: File | undefined) {
     if (!file) return;
-    const project = await readJsonFile(file);
-    state.loadProject(project);
-    await state.saveCurrentProject();
+    try {
+      const project = await readJsonFile(file);
+      state.loadProject(project);
+      await state.saveCurrentProject();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import project.');
+    }
   }
 
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {
@@ -304,7 +312,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={handleStrokeChange} />
           <ColorPicker label="Fill" value={selectedText?.fill ?? state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
           {hasSelection && (
-            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
+            <span className="rounded border border-accent/30 bg-paper px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
           )}
         </div>
         <div className="h-5 w-px bg-line" />
@@ -331,12 +339,12 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
             />
             <button
               aria-label="Bold" aria-pressed={textBold} title="Bold"
-              className={`icon-button h-8 w-8 font-bold ${textBold ? 'border-accent bg-accent/10 text-accent' : ''}`}
+              className={`icon-button h-8 w-8 font-bold ${textBold ? 'border-accent bg-paper text-accent' : ''}`}
               onClick={() => handleBold(!textBold, textItalic)}
             >B</button>
             <button
               aria-label="Italic" aria-pressed={textItalic} title="Italic"
-              className={`icon-button h-8 w-8 italic ${textItalic ? 'border-accent bg-accent/10 text-accent' : ''}`}
+              className={`icon-button h-8 w-8 italic ${textItalic ? 'border-accent bg-paper text-accent' : ''}`}
               onClick={() => handleItalic(!textItalic, textBold)}
             >I</button>
             <div className="flex items-center gap-0.5 rounded-md border border-line bg-paper p-0.5">
@@ -347,7 +355,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
                   aria-pressed={textAlign === align}
                   title={`Text align ${align}`}
                   className={`icon-button h-7 w-7 border-transparent ${
-                    textAlign === align ? 'bg-accent/10 text-accent' : ''
+                    textAlign === align ? 'bg-paper text-accent' : ''
                   }`}
                   onClick={() => handleTextAlign(align)}
                 >
@@ -415,7 +423,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           <div className="flex items-center gap-0.5 rounded border border-line bg-paper p-0.5">
             {(['solid', 'dashed', 'dotted'] as const).map((d) => (
               <button key={d} title={d} aria-pressed={activeDash === d}
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-panel' : 'text-ink hover:bg-accent/10'}`}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-panel' : 'text-ink hover:bg-panel'}`}
                 onClick={() => handleDash(d)}
               >
                 {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
@@ -506,7 +514,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
                 <button
                   key={label}
                   role="menuitem"
-                  className="block w-full px-4 py-2 text-left text-sm hover:bg-accent/10"
+                  className="block w-full px-4 py-2 text-left text-sm hover:bg-paper"
                   onClick={() => runExport(action)}
                 >
                   {label}

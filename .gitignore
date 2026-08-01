@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 work/*.log
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

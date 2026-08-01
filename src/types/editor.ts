@@ -29,6 +29,7 @@ export interface Point {
 }
 
 export type StrokeDash = 'solid' | 'dashed' | 'dotted';
+export type LineHead = 'none' | 'end' | 'start' | 'both';
 export type BackgroundMode = 'normal' | 'transparent' | 'greenScreen';
 
 export interface BaseElement {
@@ -61,6 +62,8 @@ export interface ArrowElement extends BaseElement {
   points: number[];
   pointerLength: number;
   pointerWidth: number;
+  pointerAtBeginning?: boolean;
+  pointerAtEnding?: boolean;
 }
 
 export interface RectElement extends BaseElement {
@@ -198,4 +201,5 @@ export interface EditorSettings {
   rightClickEraser: boolean;
   shortcuts: Record<string, Tool>;
   strokeDash: StrokeDash;
+  lineHead: LineHead;
 }

@@ -5,7 +5,7 @@ import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
-import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, lineHeadPatch, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
 import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgroundUtils';
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
@@ -95,6 +95,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteElement,
     deleteSelectedElements,
     strokeDash,
+    lineHead,
     // useShallow: only re-render when a picked slice changes, not on every store write
   } = useEditorStore(
     useShallow((s) => ({
@@ -129,6 +130,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       deleteElement: s.deleteElement,
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
+      lineHead: s.lineHead,
     })),
   );
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -200,11 +202,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   );
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
   const stageSurfaceClass = backgroundMode === 'transparent'
-    ? 'bg-white [background-image:linear-gradient(45deg,#cfe4db_25%,transparent_25%),linear-gradient(-45deg,#cfe4db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cfe4db_75%),linear-gradient(-45deg,transparent_75%,#cfe4db_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
+    ? 'bg-white [background-image:linear-gradient(45deg,#ded5c7_25%,transparent_25%),linear-gradient(-45deg,#ded5c7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ded5c7_75%),linear-gradient(-45deg,transparent_75%,#ded5c7_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
     : backgroundMode === 'greenScreen'
       ? 'bg-[#00FF00]'
       : showGrid
-        ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]'
+        ? 'bg-panel [background-image:linear-gradient(#ded5c7_1px,transparent_1px),linear-gradient(90deg,#ded5c7_1px,transparent_1px)] [background-size:20px_20px]'
         : 'bg-panel';
 
   useEffect(() => {
@@ -262,10 +264,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
   useEffect(() => {
     const onPaste = async (event: ClipboardEvent) => {
-      const src = await getImageFromClipboard(event);
-      if (!src || !canEditActiveLayer) return;
-      event.preventDefault();
-      await insertImage(src, { x: 140, y: 120 });
+      try {
+        const src = await getImageFromClipboard(event);
+        if (!src || !canEditActiveLayer) return;
+        event.preventDefault();
+        await insertImage(src, { x: 140, y: 120 });
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Unable to paste image.');
+      }
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -652,38 +658,21 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'line' || tool === 'arrow') {
       drawDraftRef.current = { kind: 'segment', points: [point.x, point.y, point.x, point.y], patch: null };
-      if (tool === 'line') {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'line',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: 'transparent',
-          strokeWidth: brushSize,
-          tension: 0,
-          lineCap: 'round',
-          lineJoin: 'round',
-          dash: DASH_MAP[strokeDash],
-        });
-      } else {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'arrow',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: strokeColor,
-          strokeWidth: brushSize,
-          pointerLength: 18,
-          pointerWidth: 18,
-          dash: DASH_MAP[strokeDash],
-        });
-      }
+      const effectiveHead = tool === 'line' ? 'none' : lineHead === 'none' ? 'end' : lineHead;
+      addElement({
+        id,
+        layerId: activeLayerId,
+        x: 0,
+        y: 0,
+        points: [point.x, point.y, point.x, point.y],
+        stroke: strokeColor,
+        fill: effectiveHead === 'none' ? 'transparent' : strokeColor,
+        strokeWidth: brushSize,
+        dash: DASH_MAP[strokeDash],
+        ...(effectiveHead === 'none'
+          ? { type: 'line', tension: 0, lineCap: 'round', lineJoin: 'round' }
+          : lineHeadPatch(effectiveHead)),
+      } as CanvasElement);
     }
 
     if (tool === 'rectangle' || tool === 'sticky' || tool === 'mindNode' || tool === 'speech') {
@@ -1182,7 +1171,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     };
 
     if (element.type === 'line') return <Line key={element.id} {...common} points={element.points} tension={element.tension} lineCap={element.lineCap} lineJoin={element.lineJoin} />;
-    if (element.type === 'arrow') return <Arrow key={element.id} {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
+    if (element.type === 'arrow') return (
+      <Arrow
+        key={element.id}
+        {...common}
+        points={element.points}
+        pointerLength={element.pointerLength}
+        pointerWidth={element.pointerWidth}
+        pointerAtBeginning={element.pointerAtBeginning ?? false}
+        pointerAtEnding={element.pointerAtEnding ?? true}
+      />
+    );
     if (element.type === 'rect') return <Rect key={element.id} {...common} width={element.width} height={element.height} />;
     if (element.type === 'circle') return <Ellipse key={element.id} {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
     if (element.type === 'polygon') return <RegularPolygon key={element.id} {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
@@ -1339,15 +1338,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           <Rect
             ref={marqueeKonvaRef}
             visible={false} x={0} y={0} width={0} height={0}
-            stroke="#4c7eff" strokeWidth={1 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke="#0f766e" strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
             listening={false}
           />
           <Line
             ref={lassoLineRef}
             visible={false} points={EMPTY_POINTS}
-            stroke="#4c7eff" strokeWidth={1.5 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke="#0f766e" strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
             closed listening={false}
           />
         </KonvaLayer>

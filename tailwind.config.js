@@ -5,13 +5,11 @@ export default {
     extend: {
       colors: {
         ink: '#24313d',
-        paper: '#effaf5',
+        paper: '#f7f3ea',
         panel: '#fffaf0',
-        line: '#cfe4db',
+        line: '#ded5c7',
         accent: '#0f766e',
-        coral: '#c84234',
-        sunshine: '#f7c948',
-        sky: '#5aa9e6'
+        coral: '#c84234'
       },
       boxShadow: {
         soft: '0 14px 36px rgba(36, 49, 61, 0.10)'

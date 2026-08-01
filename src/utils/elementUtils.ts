@@ -1,4 +1,4 @@
-import type { CanvasElement, StrokeDash } from '../types/editor';
+import type { ArrowElement, CanvasElement, LineElement, LineHead, StrokeDash } from '../types/editor';
 
 export interface ElementOrigin {
   id: string;
@@ -70,3 +70,14 @@ export const DASH_MAP: Record<StrokeDash, number[]> = {
   dashed: [12, 8],
   dotted: [2, 6],
 };
+
+export function lineHeadPatch(head: LineHead): Partial<LineElement | ArrowElement> {
+  if (head === 'none') return { type: 'line' };
+  return {
+    type: 'arrow',
+    pointerLength: 18,
+    pointerWidth: 18,
+    pointerAtBeginning: head === 'start' || head === 'both',
+    pointerAtEnding: head === 'end' || head === 'both',
+  };
+}
