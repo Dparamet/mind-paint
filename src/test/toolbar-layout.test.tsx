@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Topbar } from '../components/Topbar';
 import { Toolbar } from '../components/Toolbar';
+import { LayerPanel } from '../components/LayerPanel';
 import { useEditorStore } from '../store/useEditorStore';
 
 describe('Toolbar layout', () => {
@@ -48,7 +49,15 @@ describe('Toolbar layout', () => {
 
     expect(screen.getByText('M')).toHaveClass('bg-accent', 'text-panel');
     await user.click(screen.getByRole('button', { name: 'Shapes' }));
-    expect(screen.getByRole('menuitemradio', { name: 'Triangle' })).toHaveClass('border-accent', 'bg-accent/10');
+    expect(screen.getByRole('menuitemradio', { name: 'Triangle' })).toHaveClass('border-accent', 'bg-paper');
+  });
+
+  it('keeps the active layer on a warm neutral surface', () => {
+    render(<LayerPanel />);
+
+    const activeLayer = screen.getByLabelText('Rename Layer 1').closest('div.rounded-lg');
+    expect(activeLayer).toHaveClass('border-accent/50', 'bg-panel');
+    expect(activeLayer).not.toHaveClass('bg-accent/10');
   });
 
   it('closes the shape popover with Escape', async () => {

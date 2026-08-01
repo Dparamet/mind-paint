@@ -232,8 +232,8 @@ export function Toolbar() {
                   title={label}
                   className={`flex h-12 items-center justify-center rounded-lg border transition-colors ${
                     lineHead === id
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
+                      ? 'border-accent bg-paper text-accent'
+                      : 'border-transparent text-muted hover:border-line hover:bg-paper hover:text-ink'
                   }`}
                   onClick={() => chooseLineHead(id)}
                 >
@@ -254,8 +254,8 @@ export function Toolbar() {
                   title={label}
                   className={`flex h-10 items-center justify-center rounded-lg border transition-colors ${
                     strokeDash === id
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
+                      ? 'border-accent bg-paper text-accent'
+                      : 'border-transparent text-muted hover:border-line hover:bg-paper hover:text-ink'
                   }`}
                   onClick={() => chooseStrokeDash(id)}
                 >
@@ -289,8 +289,8 @@ export function Toolbar() {
                     title={label}
                     className={`flex h-12 items-center justify-center rounded-lg border transition-colors ${
                       tool === id
-                        ? 'border-accent bg-accent/10 text-accent'
-                        : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
+                        ? 'border-accent bg-paper text-accent'
+                        : 'border-transparent text-muted hover:border-line hover:bg-paper hover:text-ink'
                     }`}
                     onClick={() => {
                       setTool(id);

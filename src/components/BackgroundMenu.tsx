@@ -13,7 +13,7 @@ const options: Array<{ mode: BackgroundMode; label: string; swatch: string }> = 
   {
     mode: 'transparent',
     label: 'Transparent',
-    swatch: 'bg-white [background-image:linear-gradient(45deg,#cfe4db_25%,transparent_25%),linear-gradient(-45deg,#cfe4db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cfe4db_75%),linear-gradient(-45deg,transparent_75%,#cfe4db_75%)] [background-position:0_0,0_4px,4px_-4px,-4px_0] [background-size:8px_8px]',
+    swatch: 'bg-white [background-image:linear-gradient(45deg,#ded5c7_25%,transparent_25%),linear-gradient(-45deg,#ded5c7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ded5c7_75%),linear-gradient(-45deg,transparent_75%,#ded5c7_75%)] [background-position:0_0,0_4px,4px_-4px,-4px_0] [background-size:8px_8px]',
   },
   { mode: 'greenScreen', label: 'Green Screen', swatch: 'bg-[#00FF00]' },
 ];
@@ -97,7 +97,7 @@ export function BackgroundMenu({ value, onChange }: BackgroundMenuProps) {
               role="menuitemradio"
               aria-checked={value === option.mode}
               aria-label={option.label}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-accent/10"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-paper"
               onClick={() => {
                 onChange(option.mode);
                 setOpen(false);

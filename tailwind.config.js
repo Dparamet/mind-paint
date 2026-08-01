@@ -5,9 +5,9 @@ export default {
     extend: {
       colors: {
         ink: '#24313d',
-        paper: '#effaf5',
+        paper: '#f7f3ea',
         panel: '#fffaf0',
-        line: '#cfe4db',
+        line: '#ded5c7',
         accent: '#0f766e',
         coral: '#c84234'
       },

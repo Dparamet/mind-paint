@@ -202,11 +202,11 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   );
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
   const stageSurfaceClass = backgroundMode === 'transparent'
-    ? 'bg-white [background-image:linear-gradient(45deg,#cfe4db_25%,transparent_25%),linear-gradient(-45deg,#cfe4db_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cfe4db_75%),linear-gradient(-45deg,transparent_75%,#cfe4db_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
+    ? 'bg-white [background-image:linear-gradient(45deg,#ded5c7_25%,transparent_25%),linear-gradient(-45deg,#ded5c7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ded5c7_75%),linear-gradient(-45deg,transparent_75%,#ded5c7_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
     : backgroundMode === 'greenScreen'
       ? 'bg-[#00FF00]'
       : showGrid
-        ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]'
+        ? 'bg-panel [background-image:linear-gradient(#ded5c7_1px,transparent_1px),linear-gradient(90deg,#ded5c7_1px,transparent_1px)] [background-size:20px_20px]'
         : 'bg-panel';
 
   useEffect(() => {
