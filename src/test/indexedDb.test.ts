@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortProjectsByUpdatedAt } from '../db/indexedDb';
+import { DATABASE_VERSION, sortProjectsByUpdatedAt } from '../db/indexedDb';
 import type { SavedProject } from '../types/editor';
 
 function project(id: string, updatedAt: number): SavedProject {
@@ -22,5 +22,11 @@ describe('sortProjectsByUpdatedAt', () => {
 
     expect(sortProjectsByUpdatedAt(input).map(({ id }) => id)).toEqual(['new', 'middle', 'old']);
     expect(input.map(({ id }) => id)).toEqual(['old', 'new', 'middle']);
+  });
+});
+
+describe('IndexedDB compatibility', () => {
+  it('keeps the native version used by the previous Dexie schema', () => {
+    expect(DATABASE_VERSION).toBe(10);
   });
 });

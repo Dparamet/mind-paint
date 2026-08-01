@@ -1,7 +1,9 @@
 import type { SavedProject } from '../types/editor';
 
 const DATABASE_NAME = 'mindPaintDb';
-const DATABASE_VERSION = 1;
+// Dexie stores schema version 1 as native IndexedDB version 10.
+// Keeping 10 lets this dependency-free adapter open existing user databases.
+export const DATABASE_VERSION = 10;
 const PROJECT_STORE = 'projects';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
