@@ -1,6 +1,6 @@
 # Mind Paint
 
-Local-first drawing and thinking board built with React, Vite, TypeScript, TailwindCSS, React-Konva, Zustand, and Dexie.js.
+Local-first drawing and thinking board built with React, Vite, TypeScript, TailwindCSS, React-Konva, Zustand, and native IndexedDB.
 
 ## Features
 
@@ -15,8 +15,7 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 | Fill bucket | `F` | Flood-fill on canvas pixels |
 | Rectangle | `R` | Drag any direction — no negative-size bug |
 | Circle / Ellipse | `C` | |
-| Line | — | |
-| Arrow | `A` | |
+| Line styles | `A` | One dropdown for plain, start-arrow, end-arrow, and double-arrow lines; solid, dashed, or dotted strokes |
 | Shapes dropdown | — | Rectangle, Circle/Ellipse, Triangle, Diamond, Pentagon, Hexagon, Octagon, Star |
 | Text | `T` | Click to place; inline editor (`Enter` commit, `Shift+Enter` newline, `Esc` cancel) |
 | Sticky note | — | Double-click to edit inline; Enter commits, Esc cancels (blank sticky auto-deletes on Esc) |
@@ -36,6 +35,7 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 - **Stroke & Fill** color pickers — click swatch to open popover: 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted), and a custom native picker
 - **Opacity slider** — shown when element(s) selected (10 %–100 %)
 - **Stroke dash** — solid `—`, dashed `╌`, dotted `···` — applies to new and selected elements
+- **Line endpoints** — none, start, end, or both — applies to new and selected line elements
 - **Brush size** slider (1–48)
 - **Text controls** — font family, size, bold, italic (context-aware, shown for text tool or selected text)
 - **Sticky color presets** — per-sticky background color swatches shown in Topbar when sticky/mindNode/speech selected
@@ -51,7 +51,7 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 - Add, rename, delete, reorder (up/down), toggle visibility, lock/unlock
 
 ### Projects
-- Auto-save debounced 3 s to IndexedDB (Dexie.js)
+- Auto-save debounced 3 s to native IndexedDB
 - Manual save `Ctrl+S` equivalent via Save button
 - Multiple projects with create / load / delete in Project Manager
 - Last session auto-restored on open
@@ -65,8 +65,8 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 | PDF | Basic single-page |
 | SVG | Raster-in-SVG wrapper |
 | Project JSON | Full project round-trip |
-| Import JSON | Loads project from `.json` file |
-| Import image | From file or Ctrl+V paste |
+| Import JSON | Validated `.json` project, maximum 25 MB |
+| Import image | PNG/JPEG/WebP/GIF from file or Ctrl+V paste, maximum 10 MB |
 
 ### Keyboard Shortcuts
 | Keys | Action |
@@ -103,13 +103,22 @@ npm run build
 npm test
 ```
 
-Covers: store actions (undo/redo, layer CRUD, z-order, element CRUD), `getElementBounds` (including zero-size guards), `DASH_MAP`, `exportUtils`, `pointInPolygon`, `isElementInLasso`, and `isStickyLike` type guard. 58 tests total.
+Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, toolbar accessibility, and type guards. 119 tests total.
 
 ## Storage
 
-- **IndexedDB** (via Dexie.js) — project data
-- **localStorage** — editor settings only (tool, colors, recent colors, brush size, shortcuts, grid prefs, stroke dash)
+- **Native IndexedDB** — project data; adapter preserves the previous Dexie database/store schema
+- **localStorage** — editor settings only (tool, colors, recent colors, brush size, shortcuts, grid prefs, stroke dash, line endpoints)
 - No backend required
+
+## Security
+
+- Project JSON imports are validated at the boundary: schema, element kinds, dimensions, layer references, duplicate IDs, collection limits, and local image data URLs
+- Project imports are limited to 25 MB; image upload/paste accepts PNG, JPEG, WebP, or GIF up to 10 MB
+- CSP restricts scripts, images, connections, workers, forms, and embedded objects; Vercel deployments also receive HSTS, clickjacking, MIME-sniffing, referrer, and permissions headers
+- The service worker caches same-origin successful GET responses only and uses the app-shell fallback only for navigation requests
+- Local secret files and private key formats are excluded by `.gitignore`
+- Release check: `npm audit --audit-level=high`
 
 ## Architecture
 
@@ -128,15 +137,18 @@ src/
   store/
     useEditorStore.ts      — Zustand store: state, history, settings, layer/element/project actions
   db/
-    indexedDb.ts           — Dexie schema + helpers
+    indexedDb.ts           — native IndexedDB adapter (Dexie-schema compatible)
   types/
-    editor.ts              — CanvasElement union, EditorSettings, Layer, StrokeDash, isStickyLike
+    editor.ts              — CanvasElement union, EditorSettings, Layer, StrokeDash, LineHead, isStickyLike
   utils/
-    elementUtils.ts        — getElementBounds, DASH_MAP, pointInPolygon, isElementInLasso
-    exportUtils.ts         — PNG/JPEG/PDF/SVG/JSON download helpers
-    clipboardUtils.ts      — image paste / file-to-dataURL helpers
+    elementUtils.ts        — bounds, dash/line-head mappings, lasso geometry
+    exportUtils.ts         — PNG/JPEG/PDF/SVG/JSON helpers + project validation
+    clipboardUtils.ts      — validated image paste / file-to-dataURL helpers
   test/
-    elementUtils.test.ts   — bounds, zero-size guards, DASH_MAP
+    elementUtils.test.ts   — bounds, zero-size guards, dash/head mappings
+    indexedDb.test.ts      — ordering + legacy database-version compatibility
+    exportUtils.test.ts    — exports + untrusted project import validation
+    clipboardUtils.test.ts — image type/size validation
     lasso-selection.test.ts — pointInPolygon + isElementInLasso
     sticky-typeguard.test.ts — isStickyLike type guard
 ```
@@ -148,9 +160,10 @@ src/
 - `selectedEls` in Topbar memoized with `useMemo` + `new Set(selectedElementIds)` for O(1) lookup (was O(n·m))
 - Autosave debounced 3 000 ms
 - `elementsByLayer` memoised with `useMemo`
-- History capped at 40 snapshots; duplicate-snapshot guard via `JSON.stringify` comparison
-- Main bundle ~204 kB gzip. Next target: dynamic `import()` for export/project-management code
+- History capped at 40 snapshots; identity-based duplicate-snapshot guard avoids serialization work
+- Main bundle: **187.36 kB gzip**, reduced from **220.87 kB** (−33.51 kB / 15.2%) by replacing a 96 kB-source dependency with the native IndexedDB API
+- Current production CSS: **4.60 kB gzip**
 
 ## Deploy
 
-`vite.config.ts` uses `base: './'` — deployable on Vercel and GitHub Pages without changes.
+`vite.config.ts` uses `base: './'` for Vercel and GitHub Pages. `vercel.json` adds production security headers on Vercel; the HTML CSP remains the portable baseline on static hosts.
