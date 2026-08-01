@@ -76,4 +76,42 @@ describe('readJsonFile', () => {
 
     await expect(readJsonFile(file)).resolves.toMatchObject({ backgroundMode: 'normal' });
   });
+
+  it('rejects oversized project files before parsing', async () => {
+    const file = new File(['{}'], 'oversized.json', { type: 'application/json' });
+    Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 });
+
+    await expect(readJsonFile(file)).rejects.toThrow('Project file is too large');
+  });
+
+  it('rejects unknown element types', async () => {
+    const file = new File([
+      JSON.stringify({
+        name: 'Unsafe project',
+        width: 800,
+        height: 600,
+        layers: [{ id: 'layer-base', name: 'Layer 1', visible: true, locked: false }],
+        elements: [{ id: 'bad', layerId: 'layer-base', type: 'script', x: 0, y: 0 }],
+      }),
+    ], 'unsafe.json', { type: 'application/json' });
+
+    await expect(readJsonFile(file)).rejects.toThrow('invalid element');
+  });
+
+  it('rejects remote image sources in imported projects', async () => {
+    const file = new File([
+      JSON.stringify({
+        name: 'Remote image project',
+        width: 800,
+        height: 600,
+        layers: [{ id: 'layer-base', name: 'Layer 1', visible: true, locked: false }],
+        elements: [{
+          id: 'image-1', layerId: 'layer-base', type: 'image', x: 0, y: 0,
+          width: 100, height: 100, src: 'https://example.com/tracker.png',
+        }],
+      }),
+    ], 'remote.json', { type: 'application/json' });
+
+    await expect(readJsonFile(file)).rejects.toThrow('invalid element');
+  });
 });

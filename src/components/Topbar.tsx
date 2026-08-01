@@ -219,31 +219,39 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
   async function uploadImage(file: File | undefined) {
     if (!file || !canAddImage) return;
-    const src = await fileToDataUrl(file);
-    const size = await dataUrlToImageSize(src);
-    const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
-    const element: ImageElement = {
-      id: crypto.randomUUID(),
-      layerId: state.activeLayerId,
-      type: 'image',
-      src,
-      x: 160,
-      y: 120,
-      width: Math.round(size.width * ratio),
-      height: Math.round(size.height * ratio),
-      stroke: '#00000000',
-      fill: '#00000000',
-      strokeWidth: 0,
-    };
-    state.addElement(element);
-    state.setSelectedElementId(element.id);
+    try {
+      const src = await fileToDataUrl(file);
+      const size = await dataUrlToImageSize(src);
+      const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
+      const element: ImageElement = {
+        id: crypto.randomUUID(),
+        layerId: state.activeLayerId,
+        type: 'image',
+        src,
+        x: 160,
+        y: 120,
+        width: Math.round(size.width * ratio),
+        height: Math.round(size.height * ratio),
+        stroke: '#00000000',
+        fill: '#00000000',
+        strokeWidth: 0,
+      };
+      state.addElement(element);
+      state.setSelectedElementId(element.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import image.');
+    }
   }
 
   async function importJson(file: File | undefined) {
     if (!file) return;
-    const project = await readJsonFile(file);
-    state.loadProject(project);
-    await state.saveCurrentProject();
+    try {
+      const project = await readJsonFile(file);
+      state.loadProject(project);
+      await state.saveCurrentProject();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import project.');
+    }
   }
 
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {

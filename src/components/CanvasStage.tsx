@@ -264,10 +264,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
   useEffect(() => {
     const onPaste = async (event: ClipboardEvent) => {
-      const src = await getImageFromClipboard(event);
-      if (!src || !canEditActiveLayer) return;
-      event.preventDefault();
-      await insertImage(src, { x: 140, y: 120 });
+      try {
+        const src = await getImageFromClipboard(event);
+        if (!src || !canEditActiveLayer) return;
+        event.preventDefault();
+        await insertImage(src, { x: 140, y: 120 });
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Unable to paste image.');
+      }
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);

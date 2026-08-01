@@ -1,4 +1,13 @@
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
 export function fileToDataUrl(file: File): Promise<string> {
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return Promise.reject(new Error('Unsupported image format. Use PNG, JPEG, WebP, or GIF.'));
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return Promise.reject(new Error('Image is too large. Maximum size is 10 MB.'));
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
