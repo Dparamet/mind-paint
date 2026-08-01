@@ -5,6 +5,7 @@ import type {
   EditorDocument,
   EditorSettings,
   Layer,
+  LineHead,
   SavedProject,
   StrokeDash,
   Tool,
@@ -15,9 +16,14 @@ const settingsKey = 'mind-paint-settings';
 const lastProjectKey = 'mind-paint-last-project-id';
 const defaultLayerId = 'layer-base';
 const defaultBackgroundMode: BackgroundMode = 'normal';
+const defaultLineHead: LineHead = 'none';
 
 function normalizeBackgroundMode(value: unknown): BackgroundMode {
   return value === 'transparent' || value === 'greenScreen' ? value : defaultBackgroundMode;
+}
+
+function normalizeLineHead(value: unknown): LineHead {
+  return value === 'end' || value === 'start' || value === 'both' ? value : defaultLineHead;
 }
 
 const defaultSettings: EditorSettings = {
@@ -37,6 +43,7 @@ const defaultSettings: EditorSettings = {
   textAlign: 'left',
   rightClickEraser: true,
   strokeDash: 'solid',
+  lineHead: defaultLineHead,
   shortcuts: {
     v: 'select',
     l: 'lasso',
@@ -54,7 +61,9 @@ const defaultSettings: EditorSettings = {
 function loadSettings(): EditorSettings {
   try {
     const raw = localStorage.getItem(settingsKey);
-    return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
+    if (!raw) return defaultSettings;
+    const parsed = JSON.parse(raw) as Partial<EditorSettings>;
+    return { ...defaultSettings, ...parsed, lineHead: normalizeLineHead(parsed.lineHead) };
   } catch {
     return defaultSettings;
   }
@@ -102,6 +111,7 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setTextAlign: (align: EditorSettings['textAlign']) => void;
   setRightClickEraser: (enabled: boolean) => void;
   setStrokeDash: (dash: StrokeDash) => void;
+  setLineHead: (head: LineHead) => void;
   setShortcut: (tool: Tool, key: string) => void;
   setName: (name: string) => void;
   setSelectedElementId: (id: string | null) => void;
@@ -160,6 +170,7 @@ function pickSettings(state: EditorSettings): EditorSettings {
     textAlign: state.textAlign,
     rightClickEraser: state.rightClickEraser,
     strokeDash: state.strokeDash,
+    lineHead: state.lineHead,
     shortcuts: state.shortcuts,
   };
 }
@@ -282,6 +293,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set((state) => {
       persistSettings({ ...pickSettings(state), strokeDash });
       return { strokeDash };
+    }),
+  setLineHead: (lineHead) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), lineHead });
+      return { lineHead };
     }),
   setShortcut: (tool, key) =>
     set((state) => {
