@@ -1334,15 +1334,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           <Rect
             ref={marqueeKonvaRef}
             visible={false} x={0} y={0} width={0} height={0}
-            stroke="#4c7eff" strokeWidth={1 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke="#0f766e" strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
             listening={false}
           />
           <Line
             ref={lassoLineRef}
             visible={false} points={EMPTY_POINTS}
-            stroke="#4c7eff" strokeWidth={1.5 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke="#0f766e" strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
             closed listening={false}
           />
         </KonvaLayer>

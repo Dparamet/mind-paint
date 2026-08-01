@@ -151,7 +151,7 @@ export function Toolbar() {
 
   return (
     <aside className="relative flex min-h-0 w-16 flex-col items-center border-r border-line bg-panel px-2 py-3">
-      <div className="mb-2 h-9 w-9 shrink-0 select-none rounded-md border border-sunshine/70 bg-sunshine text-center text-lg font-black leading-9 text-ink shadow-[0_8px_18px_rgba(247,201,72,0.28)]">
+      <div className="mb-2 h-9 w-9 shrink-0 select-none rounded-md border border-accent bg-accent text-center text-lg font-black leading-9 text-panel shadow-[0_8px_18px_rgba(15,118,110,0.24)]">
         M
       </div>
       <nav
@@ -289,8 +289,8 @@ export function Toolbar() {
                     title={label}
                     className={`flex h-12 items-center justify-center rounded-lg border transition-colors ${
                       tool === id
-                        ? 'border-sunshine bg-sunshine/20 text-ink'
-                        : 'border-transparent text-muted hover:border-line hover:bg-canvas hover:text-ink'
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
                     }`}
                     onClick={() => {
                       setTool(id);

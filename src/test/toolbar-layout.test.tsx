@@ -41,6 +41,16 @@ describe('Toolbar layout', () => {
     expect(screen.queryByRole('menu', { name: 'Shape tools' })).not.toBeInTheDocument();
   });
 
+  it('uses the teal accent for branding and selected geometry', async () => {
+    const user = userEvent.setup();
+    useEditorStore.getState().setTool('triangle');
+    render(<Toolbar />);
+
+    expect(screen.getByText('M')).toHaveClass('bg-accent', 'text-panel');
+    await user.click(screen.getByRole('button', { name: 'Shapes' }));
+    expect(screen.getByRole('menuitemradio', { name: 'Triangle' })).toHaveClass('border-accent', 'bg-accent/10');
+  });
+
   it('closes the shape popover with Escape', async () => {
     const user = userEvent.setup();
     render(<Toolbar />);

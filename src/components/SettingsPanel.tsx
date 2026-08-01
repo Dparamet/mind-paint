@@ -37,7 +37,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-[26rem] max-h-[85vh] overflow-y-auto rounded-xl border border-line bg-panel shadow-soft">
-        <div className="sticky top-0 flex shrink-0 items-center justify-between border-b border-line bg-sky/10 px-4 py-3">
+        <div className="sticky top-0 flex shrink-0 items-center justify-between border-b border-line bg-accent/5 px-4 py-3">
           <h2 className="text-sm font-bold uppercase tracking-wide">Settings</h2>
           <button className="icon-button h-8 w-8" aria-label="Close settings" onClick={onClose}>
             <X size={15} />
@@ -81,7 +81,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               {configurableTools.map(({ tool, label }) => (
                 <label
                   key={tool}
-                  className="flex items-center justify-between gap-2 rounded-md border border-line bg-paper px-2.5 py-2 text-xs transition hover:border-sky/60"
+                  className="flex items-center justify-between gap-2 rounded-md border border-line bg-paper px-2.5 py-2 text-xs transition hover:border-accent/50"
                 >
                   <span className="truncate">{label}</span>
                   <input

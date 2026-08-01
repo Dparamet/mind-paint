@@ -30,7 +30,7 @@ select {
 }
 
 .tool-button {
-  @apply inline-flex h-10 w-10 items-center justify-center rounded-md border border-transparent text-ink transition hover:border-line hover:bg-sky/15 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/35;
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-md border border-transparent text-ink transition hover:border-accent/40 hover:bg-accent/10 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/35;
 }
 
 .tool-button-active {

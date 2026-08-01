@@ -52,9 +52,9 @@ export function ProjectManager() {
           <div className="rounded-md border border-dashed border-line bg-paper p-3 text-xs text-ink/65">No saved projects yet</div>
         ) : (
           projects.map((project) => (
-            <div key={project.id} className="rounded-md border border-line bg-paper p-2 transition hover:border-sky/60">
+            <div key={project.id} className="rounded-md border border-line bg-paper p-2 transition hover:border-accent/50">
               <div className="mb-2 flex gap-2">
-                <div className="h-12 w-16 shrink-0 overflow-hidden rounded border border-line bg-sunshine/20">
+                <div className="h-12 w-16 shrink-0 overflow-hidden rounded border border-line bg-accent/10">
                   <div className="flex h-full items-center justify-center text-[10px] font-semibold text-ink/50">
                     {project.elements.length} items
                   </div>
