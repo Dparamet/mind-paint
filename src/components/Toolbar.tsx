@@ -1,7 +1,8 @@
 import { ArrowUpRight, Brain, ChevronRight, Circle, Diamond, Eraser, Hexagon, ImageOff, Lasso, MessageSquare, Minus, MousePointer2, Octagon, PaintBucket, Pencil, PenLine, Pentagon, Square, Star, StickyNote, Triangle, Type } from 'lucide-react';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
-import type { Tool } from '../types/editor';
+import type { CanvasElement, LineHead, StrokeDash, Tool } from '../types/editor';
 import { useEditorStore } from '../store/useEditorStore';
+import { DASH_MAP, lineHeadPatch } from '../utils/elementUtils';
 
 type ToolEntry = { id: Tool; label: string; icon: ComponentType<{ size?: number }> };
 
@@ -17,10 +18,7 @@ const toolGroups: ToolEntry[][] = [
     { id: 'fill', label: 'Fill bucket (F)', icon: PaintBucket },
     { id: 'backgroundEraser', label: 'Remove image background', icon: ImageOff },
   ],
-  [
-    { id: 'line', label: 'Line', icon: Minus },
-    { id: 'arrow', label: 'Arrow (A)', icon: ArrowUpRight },
-  ],
+  [],
   [
     { id: 'text', label: 'Text (T)', icon: Type },
     { id: 'sticky', label: 'Sticky note', icon: StickyNote },
@@ -55,24 +53,65 @@ const shapeCategories: Array<{ label: string; tools: ToolEntry[] }> = [
 
 const shapeTools = shapeCategories.flatMap((category) => category.tools);
 
+const lineHeads: Array<{ id: LineHead; label: string }> = [
+  { id: 'none', label: 'Plain line' },
+  { id: 'end', label: 'Arrow at end' },
+  { id: 'start', label: 'Arrow at start' },
+  { id: 'both', label: 'Arrow at both ends' },
+];
+
+const strokeDashes: Array<{ id: StrokeDash; label: string }> = [
+  { id: 'solid', label: 'Solid line' },
+  { id: 'dashed', label: 'Dashed line' },
+  { id: 'dotted', label: 'Dotted line' },
+];
+
+function LinePreview({ head, dash = 'solid' }: { head: LineHead; dash?: StrokeDash }) {
+  const dashArray = dash === 'dashed' ? '10 6' : dash === 'dotted' ? '1 6' : undefined;
+  return (
+    <svg viewBox="0 0 72 20" className="h-5 w-16" aria-hidden="true">
+      <line x1="8" y1="10" x2="64" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={dashArray} />
+      {(head === 'start' || head === 'both') && <path d="M16 3 8 10l8 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+      {(head === 'end' || head === 'both') && <path d="m56 3 8 7-8 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
 export function Toolbar() {
   const tool = useEditorStore((s) => s.tool);
   const setTool = useEditorStore((s) => s.setTool);
+  const lineHead = useEditorStore((s) => s.lineHead);
+  const setLineHead = useEditorStore((s) => s.setLineHead);
+  const strokeDash = useEditorStore((s) => s.strokeDash);
+  const setStrokeDash = useEditorStore((s) => s.setStrokeDash);
+  const elements = useEditorStore((s) => s.elements);
+  const selectedElementIds = useEditorStore((s) => s.selectedElementIds);
+  const updateElement = useEditorStore((s) => s.updateElement);
   const [shapesOpen, setShapesOpen] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const [linesOpen, setLinesOpen] = useState(false);
+  const shapePopoverRef = useRef<HTMLDivElement>(null);
   const shapeTriggerRef = useRef<HTMLButtonElement>(null);
+  const linePopoverRef = useRef<HTMLDivElement>(null);
+  const lineTriggerRef = useRef<HTMLButtonElement>(null);
   const activeShape = shapeTools.find((entry) => entry.id === tool);
+  const lineToolActive = tool === 'line' || tool === 'arrow';
 
   useEffect(() => {
-    if (!shapesOpen) return;
+    if (!shapesOpen && !linesOpen) return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShapesOpen(false);
+      if (event.key === 'Escape') {
+        setShapesOpen(false);
+        setLinesOpen(false);
+      }
     };
     const closeOnOutsideClick = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!popoverRef.current?.contains(target) && !shapeTriggerRef.current?.contains(target)) {
+      if (!shapePopoverRef.current?.contains(target) && !shapeTriggerRef.current?.contains(target)) {
         setShapesOpen(false);
+      }
+      if (!linePopoverRef.current?.contains(target) && !lineTriggerRef.current?.contains(target)) {
+        setLinesOpen(false);
       }
     };
 
@@ -82,7 +121,33 @@ export function Toolbar() {
       window.removeEventListener('keydown', closeOnEscape);
       window.removeEventListener('pointerdown', closeOnOutsideClick);
     };
-  }, [shapesOpen]);
+  }, [linesOpen, shapesOpen]);
+
+  function selectedLines() {
+    const selected = new Set(selectedElementIds);
+    return elements.filter((element) => selected.has(element.id) && (element.type === 'line' || element.type === 'arrow'));
+  }
+
+  function chooseLineHead(head: LineHead) {
+    setLineHead(head);
+    setTool(head === 'none' ? 'line' : 'arrow');
+    selectedLines().forEach((element, index) => {
+      const patch = {
+        ...lineHeadPatch(head),
+        fill: head === 'none' ? 'transparent' : element.stroke,
+      } as Partial<CanvasElement>;
+      updateElement(element.id, patch, index === 0);
+    });
+    setLinesOpen(false);
+  }
+
+  function chooseStrokeDash(dash: StrokeDash) {
+    setStrokeDash(dash);
+    selectedLines().forEach((element, index) => {
+      updateElement(element.id, { dash: DASH_MAP[dash] } as Partial<CanvasElement>, index === 0);
+    });
+    setLinesOpen(false);
+  }
 
   return (
     <aside className="relative flex min-h-0 w-16 flex-col items-center border-r border-line bg-panel px-2 py-3">
@@ -97,19 +162,40 @@ export function Toolbar() {
           <div key={i} className="flex w-full shrink-0 flex-col items-center gap-1">
             {i > 0 && <div className="my-1.5 h-px w-8 bg-line" />}
             {i === 2 && (
-              <button
-                ref={shapeTriggerRef}
-                aria-label="Shapes"
-                aria-controls="shape-tools-menu"
-                aria-expanded={shapesOpen}
-                aria-haspopup="menu"
-                title="Shapes"
-                className={`tool-button relative shrink-0 ${activeShape ? 'tool-button-active' : ''}`}
-                onClick={() => setShapesOpen((open) => !open)}
-              >
-                {activeShape ? <activeShape.icon size={18} /> : <Square size={18} />}
-                <ChevronRight className="absolute bottom-0.5 right-0.5" size={9} />
-              </button>
+              <>
+                <button
+                  ref={lineTriggerRef}
+                  aria-label="Line styles"
+                  aria-controls="line-style-tools-menu"
+                  aria-expanded={linesOpen}
+                  aria-haspopup="menu"
+                  title="Line styles"
+                  className={`tool-button relative shrink-0 ${lineToolActive ? 'tool-button-active' : ''}`}
+                  onClick={() => {
+                    setShapesOpen(false);
+                    setLinesOpen((open) => !open);
+                  }}
+                >
+                  {lineHead === 'none' ? <Minus size={18} /> : <ArrowUpRight size={18} />}
+                  <ChevronRight className="absolute bottom-0.5 right-0.5" size={9} />
+                </button>
+                <button
+                  ref={shapeTriggerRef}
+                  aria-label="Shapes"
+                  aria-controls="shape-tools-menu"
+                  aria-expanded={shapesOpen}
+                  aria-haspopup="menu"
+                  title="Shapes"
+                  className={`tool-button relative shrink-0 ${activeShape ? 'tool-button-active' : ''}`}
+                  onClick={() => {
+                    setLinesOpen(false);
+                    setShapesOpen((open) => !open);
+                  }}
+                >
+                  {activeShape ? <activeShape.icon size={18} /> : <Square size={18} />}
+                  <ChevronRight className="absolute bottom-0.5 right-0.5" size={9} />
+                </button>
+              </>
             )}
             {group.map(({ id, label, icon: Icon }) => (
               <button
@@ -126,10 +212,64 @@ export function Toolbar() {
           </div>
         ))}
       </nav>
+      {linesOpen && (
+        <div
+          id="line-style-tools-menu"
+          ref={linePopoverRef}
+          role="menu"
+          aria-label="Line style tools"
+          className="absolute left-[calc(100%+8px)] top-40 z-40 w-64 rounded-xl border border-line bg-panel p-3 shadow-xl"
+        >
+          <section className="mb-3">
+            <div className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wider text-muted">Endpoints</div>
+            <div className="grid grid-cols-2 gap-1">
+              {lineHeads.map(({ id, label }) => (
+                <button
+                  key={id}
+                  role="menuitemradio"
+                  aria-checked={lineHead === id}
+                  aria-label={label}
+                  title={label}
+                  className={`flex h-12 items-center justify-center rounded-lg border transition-colors ${
+                    lineHead === id
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
+                  }`}
+                  onClick={() => chooseLineHead(id)}
+                >
+                  <LinePreview head={id} />
+                </button>
+              ))}
+            </div>
+          </section>
+          <section>
+            <div className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wider text-muted">Stroke</div>
+            <div className="grid grid-cols-3 gap-1">
+              {strokeDashes.map(({ id, label }) => (
+                <button
+                  key={id}
+                  role="menuitemradio"
+                  aria-checked={strokeDash === id}
+                  aria-label={label}
+                  title={label}
+                  className={`flex h-10 items-center justify-center rounded-lg border transition-colors ${
+                    strokeDash === id
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-transparent text-muted hover:border-line hover:bg-accent/5 hover:text-ink'
+                  }`}
+                  onClick={() => chooseStrokeDash(id)}
+                >
+                  <LinePreview head="none" dash={id} />
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
       {shapesOpen && (
         <div
           id="shape-tools-menu"
-          ref={popoverRef}
+          ref={shapePopoverRef}
           role="menu"
           aria-label="Shape tools"
           className="absolute left-[calc(100%+8px)] top-40 z-40 w-52 rounded-xl border border-line bg-panel p-3 shadow-xl"

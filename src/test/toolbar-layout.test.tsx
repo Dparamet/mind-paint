@@ -12,6 +12,8 @@ describe('Toolbar layout', () => {
     const state = useEditorStore.getState();
     state.clearCanvas();
     state.setTool('select');
+    state.setLineHead('none');
+    state.setStrokeDash('solid');
   });
 
   it('keeps every drawing tool reachable in a scrollable navigation region', () => {
@@ -69,6 +71,56 @@ describe('Toolbar layout', () => {
     await user.click(document.body);
 
     expect(screen.queryByRole('menu', { name: 'Shape tools' })).not.toBeInTheDocument();
+  });
+
+  it('selects arrow endpoints and stroke patterns from one line menu', async () => {
+    const user = userEvent.setup();
+    render(<Toolbar />);
+
+    await user.click(screen.getByRole('button', { name: 'Line styles' }));
+    expect(screen.getByRole('menu', { name: 'Line style tools' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('menuitemradio', { name: 'Arrow at both ends' }));
+    expect(useEditorStore.getState()).toMatchObject({ tool: 'arrow', lineHead: 'both' });
+
+    await user.click(screen.getByRole('button', { name: 'Line styles' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Dashed line' }));
+    expect(useEditorStore.getState().strokeDash).toBe('dashed');
+  });
+
+  it('applies endpoint and dash choices to selected lines', async () => {
+    const user = userEvent.setup();
+    const state = useEditorStore.getState();
+    state.addElement({
+      id: 'line-1', layerId: state.activeLayerId, type: 'line', x: 0, y: 0,
+      points: [0, 0, 100, 100], stroke: '#000', fill: 'transparent', strokeWidth: 2,
+    });
+    state.setSelectedElementId('line-1');
+    render(<Toolbar />);
+
+    await user.click(screen.getByRole('button', { name: 'Line styles' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Arrow at start' }));
+    expect(useEditorStore.getState().elements[0]).toMatchObject({
+      type: 'arrow', pointerAtBeginning: true, pointerAtEnding: false,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Line styles' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Dotted line' }));
+    expect(useEditorStore.getState().elements[0].dash).toEqual([2, 6]);
+  });
+
+  it('closes the line menu with Escape and outside pointer interaction', async () => {
+    const user = userEvent.setup();
+    render(<Toolbar />);
+    const trigger = screen.getByRole('button', { name: 'Line styles' });
+
+    await user.click(trigger);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'Line style tools' })).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    await user.click(document.body);
+    expect(screen.queryByRole('menu', { name: 'Line style tools' })).not.toBeInTheDocument();
   });
 
   it('keeps canvas actions reachable when the workspace is narrow', () => {
