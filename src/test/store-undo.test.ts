@@ -163,3 +163,12 @@ describe('store — project background', () => {
     expect(useEditorStore.getState().backgroundMode).toBe('normal');
   });
 });
+
+describe('store — line style settings', () => {
+  it('persists the selected line endpoint style', () => {
+    useEditorStore.getState().setLineHead('both');
+
+    expect(useEditorStore.getState().lineHead).toBe('both');
+    expect(JSON.parse(localStorage.getItem('mind-paint-settings') ?? '{}').lineHead).toBe('both');
+  });
+});

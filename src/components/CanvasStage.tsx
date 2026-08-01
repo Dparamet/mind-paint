@@ -5,7 +5,7 @@ import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
-import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, moveElementOrigins } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, lineHeadPatch, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
 import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgroundUtils';
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
@@ -95,6 +95,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteElement,
     deleteSelectedElements,
     strokeDash,
+    lineHead,
     // useShallow: only re-render when a picked slice changes, not on every store write
   } = useEditorStore(
     useShallow((s) => ({
@@ -129,6 +130,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       deleteElement: s.deleteElement,
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
+      lineHead: s.lineHead,
     })),
   );
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -652,38 +654,21 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'line' || tool === 'arrow') {
       drawDraftRef.current = { kind: 'segment', points: [point.x, point.y, point.x, point.y], patch: null };
-      if (tool === 'line') {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'line',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: 'transparent',
-          strokeWidth: brushSize,
-          tension: 0,
-          lineCap: 'round',
-          lineJoin: 'round',
-          dash: DASH_MAP[strokeDash],
-        });
-      } else {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'arrow',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: strokeColor,
-          strokeWidth: brushSize,
-          pointerLength: 18,
-          pointerWidth: 18,
-          dash: DASH_MAP[strokeDash],
-        });
-      }
+      const effectiveHead = tool === 'line' ? 'none' : lineHead === 'none' ? 'end' : lineHead;
+      addElement({
+        id,
+        layerId: activeLayerId,
+        x: 0,
+        y: 0,
+        points: [point.x, point.y, point.x, point.y],
+        stroke: strokeColor,
+        fill: effectiveHead === 'none' ? 'transparent' : strokeColor,
+        strokeWidth: brushSize,
+        dash: DASH_MAP[strokeDash],
+        ...(effectiveHead === 'none'
+          ? { type: 'line', tension: 0, lineCap: 'round', lineJoin: 'round' }
+          : lineHeadPatch(effectiveHead)),
+      } as CanvasElement);
     }
 
     if (tool === 'rectangle' || tool === 'sticky' || tool === 'mindNode' || tool === 'speech') {
@@ -1182,7 +1167,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     };
 
     if (element.type === 'line') return <Line key={element.id} {...common} points={element.points} tension={element.tension} lineCap={element.lineCap} lineJoin={element.lineJoin} />;
-    if (element.type === 'arrow') return <Arrow key={element.id} {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
+    if (element.type === 'arrow') return (
+      <Arrow
+        key={element.id}
+        {...common}
+        points={element.points}
+        pointerLength={element.pointerLength}
+        pointerWidth={element.pointerWidth}
+        pointerAtBeginning={element.pointerAtBeginning ?? false}
+        pointerAtEnding={element.pointerAtEnding ?? true}
+      />
+    );
     if (element.type === 'rect') return <Rect key={element.id} {...common} width={element.width} height={element.height} />;
     if (element.type === 'circle') return <Ellipse key={element.id} {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
     if (element.type === 'polygon') return <RegularPolygon key={element.id} {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;

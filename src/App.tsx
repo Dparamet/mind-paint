@@ -82,7 +82,11 @@ export default function App() {
         return;
       }
       const tool = store.shortcuts[key];
-      if (tool) store.setTool(tool);
+      if (tool) {
+        if (tool === 'arrow') store.setLineHead('end');
+        if (tool === 'line') store.setLineHead('none');
+        store.setTool(tool);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
