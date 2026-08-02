@@ -6,10 +6,10 @@ import {
 } from '../utils/backgroundUtils';
 
 describe('canvas background fill', () => {
-  it('maps every project mode to its exact stage fill', () => {
-    expect(getCanvasBackgroundFill('normal')).toBe('#fffaf0');
-    expect(getCanvasBackgroundFill('transparent')).toBe('#00000000');
-    expect(getCanvasBackgroundFill('greenScreen')).toBe('#00FF00');
+  it('uses theme canvas only in normal mode', () => {
+    expect(getCanvasBackgroundFill('normal', '#273449')).toBe('#273449');
+    expect(getCanvasBackgroundFill('transparent', '#273449')).toBe('#00000000');
+    expect(getCanvasBackgroundFill('greenScreen', '#273449')).toBe('#00FF00');
   });
 });
 

@@ -10,6 +10,8 @@ describe('BackgroundMenu', () => {
     render(<BackgroundMenu value="normal" onChange={onChange} />);
 
     await user.click(screen.getByRole('button', { name: 'Background: Normal' }));
+    const normal = screen.getByRole('menuitemradio', { name: 'Normal' });
+    expect(normal.querySelector('[aria-hidden="true"]')).toHaveClass('bg-canvas');
     const green = screen.getByRole('menuitemradio', { name: 'Green Screen' });
     expect(green).toHaveAttribute('aria-checked', 'false');
     await user.click(green);

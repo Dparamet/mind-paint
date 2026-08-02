@@ -11,6 +11,7 @@ import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgrou
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
 import { normalizeTextBox } from '../utils/textBoxUtils';
 import { useEditorStore } from '../store/useEditorStore';
+import { hexToRgba, resolveThemePalette } from '../theme/theme';
 import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
@@ -96,6 +97,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteSelectedElements,
     strokeDash,
     lineHead,
+    theme,
+    customThemePrimary,
+    customThemeOverrides,
     // useShallow: only re-render when a picked slice changes, not on every store write
   } = useEditorStore(
     useShallow((s) => ({
@@ -131,7 +135,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
       lineHead: s.lineHead,
+      theme: s.theme,
+      customThemePrimary: s.customThemePrimary,
+      customThemeOverrides: s.customThemeOverrides,
     })),
+  );
+  const themePalette = useMemo(
+    () => resolveThemePalette({ theme, customThemePrimary, customThemeOverrides }),
+    [customThemeOverrides, customThemePrimary, theme],
   );
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
@@ -202,12 +213,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   );
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
   const stageSurfaceClass = backgroundMode === 'transparent'
-    ? 'bg-white [background-image:linear-gradient(45deg,#ded5c7_25%,transparent_25%),linear-gradient(-45deg,#ded5c7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ded5c7_75%),linear-gradient(-45deg,transparent_75%,#ded5c7_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
+    ? 'canvas-transparent-grid'
     : backgroundMode === 'greenScreen'
       ? 'bg-[#00FF00]'
       : showGrid
-        ? 'bg-panel [background-image:linear-gradient(#ded5c7_1px,transparent_1px),linear-gradient(90deg,#ded5c7_1px,transparent_1px)] [background-size:20px_20px]'
-        : 'bg-panel';
+        ? 'canvas-theme-grid'
+        : 'bg-canvas';
 
   useEffect(() => {
     const id = editingIdRef.current;
@@ -1216,7 +1227,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   return (
-    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
+    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-canvas">
       <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
@@ -1267,7 +1278,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             y={-100000}
             width={200000}
             height={200000}
-            fill={getCanvasBackgroundFill(backgroundMode)}
+            fill={getCanvasBackgroundFill(backgroundMode, themePalette.canvas)}
             listening={false}
           />
         </KonvaLayer>
@@ -1277,7 +1288,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           </KonvaLayer>
         ))}
         <KonvaLayer>
-          <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled
+            borderStroke={themePalette.accent}
+            anchorStroke={themePalette.accent}
+            anchorFill={themePalette.panel}
+            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
+          />
           <Rect
             ref={textDraftKonvaRef}
             visible={false}
@@ -1285,10 +1303,10 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             y={0}
             width={0}
             height={0}
-            stroke="#0f766e"
+            stroke={themePalette.accent}
             strokeWidth={1.5 / scale}
             dash={[6 / scale, 4 / scale]}
-            fill="rgba(15,118,110,0.08)"
+            fill={hexToRgba(themePalette.accent, 0.08)}
             listening={false}
           />
           {selectionBounds && selectedElementIds.length > 1 && (tool === 'lasso' || tool === 'select') && (
@@ -1330,23 +1348,23 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
                 handleMouseUp();
               }}
             >
-              <KonvaCircle radius={13 / scale} fill="#0f766e" shadowColor="#17202a" shadowBlur={5 / scale} shadowOpacity={0.2} />
-              <Arrow points={[-6 / scale, 0, 6 / scale, 0]} stroke="#ffffff" fill="#ffffff" strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
-              <Arrow points={[6 / scale, 0, -6 / scale, 0]} stroke="#ffffff" fill="#ffffff" strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+              <KonvaCircle radius={13 / scale} fill={themePalette.accent} shadowColor={themePalette.ink} shadowBlur={5 / scale} shadowOpacity={0.2} />
+              <Arrow points={[-6 / scale, 0, 6 / scale, 0]} stroke={themePalette.panel} fill={themePalette.panel} strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+              <Arrow points={[6 / scale, 0, -6 / scale, 0]} stroke={themePalette.panel} fill={themePalette.panel} strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
             </Group>
           )}
           <Rect
             ref={marqueeKonvaRef}
             visible={false} x={0} y={0} width={0} height={0}
-            stroke="#0f766e" strokeWidth={1 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
+            stroke={themePalette.accent} strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill={hexToRgba(themePalette.accent, 0.06)}
             listening={false}
           />
           <Line
             ref={lassoLineRef}
             visible={false} points={EMPTY_POINTS}
-            stroke="#0f766e" strokeWidth={1.5 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(15,118,110,0.06)"
+            stroke={themePalette.accent} strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill={hexToRgba(themePalette.accent, 0.06)}
             closed listening={false}
           />
         </KonvaLayer>
@@ -1381,9 +1399,10 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
               } : {
                 height: elH || Math.max(72, fs * 3),
                 minHeight: Math.max(32, fs * 2),
-                border: '2px solid #0f766e',
+                border: `2px solid ${themePalette.accent}`,
                 borderRadius: '4px',
-                backgroundColor: 'rgba(255,255,255,0.95)',
+                backgroundColor: hexToRgba(themePalette.panel, 0.95),
+                color: themePalette.ink,
                 padding: '4px',
               }),
             }}

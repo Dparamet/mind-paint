@@ -4,12 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#24313d',
-        paper: '#f7f3ea',
-        panel: '#fffaf0',
-        line: '#ded5c7',
-        accent: '#0f766e',
-        coral: '#c84234'
+        ink: 'rgb(var(--color-ink) / <alpha-value>)',
+        paper: 'rgb(var(--color-paper) / <alpha-value>)',
+        panel: 'rgb(var(--color-panel) / <alpha-value>)',
+        line: 'rgb(var(--color-line) / <alpha-value>)',
+        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        coral: 'rgb(var(--color-coral) / <alpha-value>)',
+        canvas: 'rgb(var(--color-canvas) / <alpha-value>)'
       },
       boxShadow: {
         soft: '0 14px 36px rgba(36, 49, 61, 0.10)'

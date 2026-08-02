@@ -296,7 +296,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   ];
 
   return (
-    <header className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-2 shadow-[0_1px_0_rgba(255,255,255,0.75)]">
+    <header className="theme-divider-shadow flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-2">
 
       {/* Row 1 — drawing controls */}
       <div className="flex flex-wrap items-center gap-2">

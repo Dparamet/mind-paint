@@ -183,6 +183,17 @@ export interface EditorDocument {
 
 export type SavedProject = EditorDocument;
 
+export type ThemeId = 'warm' | 'light' | 'dark' | 'custom';
+export type ThemeColorKey = 'paper' | 'panel' | 'ink' | 'line' | 'accent' | 'coral' | 'canvas';
+export type ThemePalette = Record<ThemeColorKey, string>;
+export type CustomThemeOverrides = Partial<Record<ThemeColorKey, string>>;
+
+export interface ThemeSettings {
+  theme: ThemeId;
+  customThemePrimary: string;
+  customThemeOverrides: CustomThemeOverrides;
+}
+
 export interface EditorSettings {
   tool: Tool;
   strokeColor: string;
@@ -202,4 +213,7 @@ export interface EditorSettings {
   shortcuts: Record<string, Tool>;
   strokeDash: StrokeDash;
   lineHead: LineHead;
+  theme: ThemeId;
+  customThemePrimary: string;
+  customThemeOverrides: CustomThemeOverrides;
 }

@@ -9,7 +9,7 @@ interface BackgroundMenuProps {
 }
 
 const options: Array<{ mode: BackgroundMode; label: string; swatch: string }> = [
-  { mode: 'normal', label: 'Normal', swatch: 'bg-[#fffaf0]' },
+  { mode: 'normal', label: 'Normal', swatch: 'bg-canvas' },
   {
     mode: 'transparent',
     label: 'Transparent',

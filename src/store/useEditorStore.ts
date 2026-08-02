@@ -8,9 +8,12 @@ import type {
   LineHead,
   SavedProject,
   StrokeDash,
+  ThemeColorKey,
+  ThemeId,
   Tool,
 } from '../types/editor';
 import { saveProject } from '../db/indexedDb';
+import { DEFAULT_CUSTOM_PRIMARY, isHexColor, normalizeThemeSettings } from '../theme/theme';
 
 const settingsKey = 'mind-paint-settings';
 const lastProjectKey = 'mind-paint-last-project-id';
@@ -44,6 +47,9 @@ const defaultSettings: EditorSettings = {
   rightClickEraser: true,
   strokeDash: 'solid',
   lineHead: defaultLineHead,
+  theme: 'warm',
+  customThemePrimary: DEFAULT_CUSTOM_PRIMARY,
+  customThemeOverrides: {},
   shortcuts: {
     v: 'select',
     l: 'lasso',
@@ -63,7 +69,12 @@ function loadSettings(): EditorSettings {
     const raw = localStorage.getItem(settingsKey);
     if (!raw) return defaultSettings;
     const parsed = JSON.parse(raw) as Partial<EditorSettings>;
-    return { ...defaultSettings, ...parsed, lineHead: normalizeLineHead(parsed.lineHead) };
+    return {
+      ...defaultSettings,
+      ...parsed,
+      ...normalizeThemeSettings(parsed as Record<string, unknown>),
+      lineHead: normalizeLineHead(parsed.lineHead),
+    };
   } catch {
     return defaultSettings;
   }
@@ -112,6 +123,10 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setRightClickEraser: (enabled: boolean) => void;
   setStrokeDash: (dash: StrokeDash) => void;
   setLineHead: (head: LineHead) => void;
+  setTheme: (theme: ThemeId) => void;
+  setCustomThemePrimary: (color: string) => void;
+  setCustomThemeOverride: (key: ThemeColorKey, color: string | null) => void;
+  resetCustomTheme: () => void;
   setShortcut: (tool: Tool, key: string) => void;
   setName: (name: string) => void;
   setSelectedElementId: (id: string | null) => void;
@@ -144,7 +159,11 @@ interface EditorStore extends EditorDocument, EditorSettings {
 }
 
 function persistSettings(settings: EditorSettings) {
-  localStorage.setItem(settingsKey, JSON.stringify(settings));
+  try {
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+  } catch {
+    // Storage can be unavailable or full; keep the current session state usable.
+  }
 }
 
 // ponytail: dragging the native color input commits intermediate hexes here; dedupe + cap keeps it self-cleaning. Debounce on commit if it ever feels noisy.
@@ -171,6 +190,9 @@ function pickSettings(state: EditorSettings): EditorSettings {
     rightClickEraser: state.rightClickEraser,
     strokeDash: state.strokeDash,
     lineHead: state.lineHead,
+    theme: state.theme,
+    customThemePrimary: state.customThemePrimary,
+    customThemeOverrides: state.customThemeOverrides,
     shortcuts: state.shortcuts,
   };
 }
@@ -298,6 +320,33 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set((state) => {
       persistSettings({ ...pickSettings(state), lineHead });
       return { lineHead };
+    }),
+  setTheme: (theme) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), theme });
+      return { theme };
+    }),
+  setCustomThemePrimary: (customThemePrimary) => {
+    if (!isHexColor(customThemePrimary)) return;
+    set((state) => {
+      persistSettings({ ...pickSettings(state), customThemePrimary });
+      return { customThemePrimary };
+    });
+  },
+  setCustomThemeOverride: (key, color) =>
+    set((state) => {
+      const customThemeOverrides = { ...state.customThemeOverrides };
+      if (color === null) delete customThemeOverrides[key];
+      else if (isHexColor(color)) customThemeOverrides[key] = color;
+      persistSettings({ ...pickSettings(state), customThemeOverrides });
+      return { customThemeOverrides };
+    }),
+  resetCustomTheme: () =>
+    set((state) => {
+      const customThemePrimary = DEFAULT_CUSTOM_PRIMARY;
+      const customThemeOverrides = {};
+      persistSettings({ ...pickSettings(state), customThemePrimary, customThemeOverrides });
+      return { customThemePrimary, customThemeOverrides };
     }),
   setShortcut: (tool, key) =>
     set((state) => {

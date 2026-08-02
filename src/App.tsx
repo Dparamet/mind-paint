@@ -7,6 +7,7 @@ import { ProjectManager } from './components/ProjectManager';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toolbar } from './components/Toolbar';
 import { Topbar } from './components/Topbar';
+import { ThemeRoot } from './components/ThemeRoot';
 import { getProject, listProjects } from './db/indexedDb';
 import { lastProjectKey, useEditorStore } from './store/useEditorStore';
 import type { CanvasElement } from './types/editor';
@@ -114,7 +115,7 @@ export default function App() {
   }, [autosaveKey, saveCurrentProject, saveStatus]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-paper text-ink">
+    <ThemeRoot>
       <Toolbar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar stageRef={stageRef} onOpenSettings={() => setSettingsOpen(true)} />
@@ -132,6 +133,6 @@ export default function App() {
           {saveStatus === 'error' && <span className="text-coral">Save failed</span>}
         </div>
       </div>
-    </div>
+    </ThemeRoot>
   );
 }
