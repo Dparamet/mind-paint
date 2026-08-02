@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import type { Tool } from '../types/editor';
+import { ThemeSettings } from './ThemeSettings';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -45,6 +46,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
 
         <div className="space-y-5 p-4">
+          <ThemeSettings />
+
           {/* Keyboard reference */}
           <div className="rounded-lg border border-line bg-paper p-3 text-xs leading-7 text-ink/70">
             {[
