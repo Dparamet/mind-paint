@@ -32,6 +32,7 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 - **Paste image** from clipboard
 
 ### Styling
+- **Application themes** — Warm, Light, Dark, or Custom; Custom derives a complete palette from one primary color and supports optional per-surface overrides
 - **Stroke & Fill** color pickers — click swatch to open popover: 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted), and a custom native picker
 - **Opacity slider** — shown when element(s) selected (10 %–100 %)
 - **Stroke dash** — solid `—`, dashed `╌`, dotted `···` — applies to new and selected elements
@@ -103,12 +104,12 @@ npm run build
 npm test
 ```
 
-Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, toolbar accessibility, and type guards. 119 tests total.
+Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, themes, toolbar accessibility, and type guards. 132 tests total.
 
 ## Storage
 
 - **Native IndexedDB** — project data; adapter preserves the previous Dexie database/store schema
-- **localStorage** — editor settings only (tool, colors, recent colors, brush size, shortcuts, grid prefs, stroke dash, line endpoints)
+- **localStorage** — editor settings only (theme preferences, tool, colors, recent colors, brush size, shortcuts, grid prefs, stroke dash, line endpoints)
 - No backend required
 
 ## Security
@@ -133,13 +134,17 @@ src/
     ProjectManager.tsx     — project CRUD
     PropertiesPanel.tsx    — live X/Y/W/H/rotation/strokeWidth inputs
     ColorPicker.tsx        — stroke/fill swatch + popover with presets + recent history
-    SettingsPanel.tsx      — shortcuts + grid settings
+    SettingsPanel.tsx      — settings modal shell
+    ThemeRoot.tsx          — applies resolved theme CSS variables to the application
+    ThemeSettings.tsx      — preset, custom palette, advanced override, and reset controls
   store/
     useEditorStore.ts      — Zustand store: state, history, settings, layer/element/project actions
   db/
     indexedDb.ts           — native IndexedDB adapter (Dexie-schema compatible)
   types/
     editor.ts              — CanvasElement union, EditorSettings, Layer, StrokeDash, LineHead, isStickyLike
+  theme/
+    theme.ts               — presets, custom palette derivation, validation, and contrast correction
   utils/
     elementUtils.ts        — bounds, dash/line-head mappings, lasso geometry
     exportUtils.ts         — PNG/JPEG/PDF/SVG/JSON helpers + project validation

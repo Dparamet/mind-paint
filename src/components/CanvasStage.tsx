@@ -11,6 +11,7 @@ import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgrou
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
 import { normalizeTextBox } from '../utils/textBoxUtils';
 import { useEditorStore } from '../store/useEditorStore';
+import { resolveThemePalette } from '../theme/theme';
 import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
@@ -96,6 +97,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     deleteSelectedElements,
     strokeDash,
     lineHead,
+    theme,
+    customThemePrimary,
+    customThemeOverrides,
     // useShallow: only re-render when a picked slice changes, not on every store write
   } = useEditorStore(
     useShallow((s) => ({
@@ -131,7 +135,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
       lineHead: s.lineHead,
+      theme: s.theme,
+      customThemePrimary: s.customThemePrimary,
+      customThemeOverrides: s.customThemeOverrides,
     })),
+  );
+  const themeCanvas = useMemo(
+    () => resolveThemePalette({ theme, customThemePrimary, customThemeOverrides }).canvas,
+    [customThemeOverrides, customThemePrimary, theme],
   );
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
@@ -202,12 +213,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   );
   const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
   const stageSurfaceClass = backgroundMode === 'transparent'
-    ? 'bg-white [background-image:linear-gradient(45deg,#ded5c7_25%,transparent_25%),linear-gradient(-45deg,#ded5c7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ded5c7_75%),linear-gradient(-45deg,transparent_75%,#ded5c7_75%)] [background-position:0_0,0_12px,12px_-12px,-12px_0] [background-size:24px_24px]'
+    ? 'canvas-transparent-grid'
     : backgroundMode === 'greenScreen'
       ? 'bg-[#00FF00]'
       : showGrid
-        ? 'bg-panel [background-image:linear-gradient(#ded5c7_1px,transparent_1px),linear-gradient(90deg,#ded5c7_1px,transparent_1px)] [background-size:20px_20px]'
-        : 'bg-panel';
+        ? 'canvas-theme-grid'
+        : 'bg-canvas';
 
   useEffect(() => {
     const id = editingIdRef.current;
@@ -1216,7 +1227,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   return (
-    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
+    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-canvas">
       <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
@@ -1267,7 +1278,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             y={-100000}
             width={200000}
             height={200000}
-            fill={getCanvasBackgroundFill(backgroundMode)}
+            fill={getCanvasBackgroundFill(backgroundMode, themeCanvas)}
             listening={false}
           />
         </KonvaLayer>

@@ -44,6 +44,25 @@ select {
   @apply border-accent bg-accent text-panel shadow-[0_8px_18px_rgba(15,118,110,0.24)] hover:bg-accent hover:text-panel;
 }
 
+.canvas-theme-grid {
+  background-color: rgb(var(--color-canvas));
+  background-image:
+    linear-gradient(rgb(var(--color-line)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--color-line)) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.canvas-transparent-grid {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #ded5c7 25%, transparent 25%),
+    linear-gradient(-45deg, #ded5c7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ded5c7 75%),
+    linear-gradient(-45deg, transparent 75%, #ded5c7 75%);
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  background-size: 24px 24px;
+}
+
 /* Thin scrollbars for panels */
 .overflow-auto,
 .overflow-y-auto {
