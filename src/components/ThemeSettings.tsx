@@ -10,12 +10,14 @@ const choices: Array<{ id: ThemeId; label: string }> = [
   { id: 'custom', label: 'Custom' },
 ];
 
-const overrideFields: Array<{ key: ThemeColorKey; label: string }> = [
-  { key: 'paper', label: 'App background' },
-  { key: 'panel', label: 'Panels' },
-  { key: 'ink', label: 'Text' },
-  { key: 'line', label: 'Borders' },
-  { key: 'canvas', label: 'Canvas' },
+const overrideFields: Array<{ key: ThemeColorKey; label: string; description: string }> = [
+  { key: 'paper', label: 'App background', description: 'Secondary surfaces and app background' },
+  { key: 'panel', label: 'Panels', description: 'Toolbars, sidebars, dialogs, and controls' },
+  { key: 'ink', label: 'Text', description: 'Application text and icons' },
+  { key: 'line', label: 'Borders', description: 'Borders, separators, and grid' },
+  { key: 'accent', label: 'Accent', description: 'Active tools, focus, and selection' },
+  { key: 'coral', label: 'Error and warning', description: 'Destructive actions and errors' },
+  { key: 'canvas', label: 'Canvas', description: 'Normal editor canvas surface' },
 ];
 
 export function ThemeSettings() {
@@ -89,29 +91,49 @@ export function ThemeSettings() {
               Advanced customization
             </summary>
             <div className="mt-3 space-y-2">
-              {overrideFields.map(({ key, label }) => (
-                <div key={key} className="flex items-center justify-between gap-2 text-xs">
-                  <label className="flex flex-1 items-center justify-between gap-2">
-                    <span>{label}</span>
-                    <input
-                      aria-label={`${label} theme color`}
-                      type="color"
-                      value={state.customThemeOverrides[key] ?? customPalette[key]}
-                      onChange={(event) => state.setCustomThemeOverride(key, event.target.value)}
-                      className="h-7 w-11 cursor-pointer rounded border border-line bg-panel"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    aria-label={`Use automatic ${label} color`}
-                    disabled={!state.customThemeOverrides[key]}
-                    onClick={() => state.setCustomThemeOverride(key, null)}
-                    className="rounded px-1.5 py-1 text-[10px] text-ink/60 hover:text-accent disabled:opacity-30"
-                  >
-                    Auto
-                  </button>
-                </div>
-              ))}
+              {overrideFields.map(({ key, label, description }) => {
+                const requested = state.customThemeOverrides[key];
+                const applied = customPalette[key];
+                const adjusted = Boolean(requested && requested.toLowerCase() !== applied.toLowerCase());
+                return (
+                  <div key={key} className="rounded-md border border-line/70 bg-panel/40 p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block font-medium">{label}</span>
+                          <span className="block truncate text-[10px] text-ink/50">{description}</span>
+                        </span>
+                        <input
+                          aria-label={`${label} theme color`}
+                          type="color"
+                          value={requested ?? applied}
+                          onChange={(event) => state.setCustomThemeOverride(key, event.target.value)}
+                          className="h-7 w-11 shrink-0 cursor-pointer rounded border border-line bg-panel"
+                        />
+                      </label>
+                      <span
+                        aria-label={`Applied ${label} color`}
+                        className="h-6 w-6 shrink-0 rounded-full border border-line"
+                        style={{ background: applied }}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Use automatic ${label} color`}
+                        disabled={!requested}
+                        onClick={() => state.setCustomThemeOverride(key, null)}
+                        className="rounded px-1.5 py-1 text-[10px] text-ink/60 hover:text-accent disabled:opacity-30"
+                      >
+                        Auto
+                      </button>
+                    </div>
+                    {adjusted && (
+                      <span className="mt-1 block text-[10px] text-coral" role="status">
+                        Adjusted for readability
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </details>
 
