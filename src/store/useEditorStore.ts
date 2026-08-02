@@ -11,6 +11,7 @@ import type {
   Tool,
 } from '../types/editor';
 import { saveProject } from '../db/indexedDb';
+import { DEFAULT_CUSTOM_PRIMARY } from '../theme/theme';
 
 const settingsKey = 'mind-paint-settings';
 const lastProjectKey = 'mind-paint-last-project-id';
@@ -44,6 +45,9 @@ const defaultSettings: EditorSettings = {
   rightClickEraser: true,
   strokeDash: 'solid',
   lineHead: defaultLineHead,
+  theme: 'warm',
+  customThemePrimary: DEFAULT_CUSTOM_PRIMARY,
+  customThemeOverrides: {},
   shortcuts: {
     v: 'select',
     l: 'lasso',
@@ -171,6 +175,9 @@ function pickSettings(state: EditorSettings): EditorSettings {
     rightClickEraser: state.rightClickEraser,
     strokeDash: state.strokeDash,
     lineHead: state.lineHead,
+    theme: state.theme,
+    customThemePrimary: state.customThemePrimary,
+    customThemeOverrides: state.customThemeOverrides,
     shortcuts: state.shortcuts,
   };
 }
