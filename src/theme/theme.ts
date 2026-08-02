@@ -59,6 +59,11 @@ function readableText(surface: string): string {
   return getContrastRatio('#17202a', surface) >= getContrastRatio('#f8fafc', surface) ? '#17202a' : '#f8fafc';
 }
 
+export function hexToRgba(color: string, alpha: number): string {
+  const [r, g, b] = rgb(color);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function readableAccent(primary: string, panel: string): string {
   let accent = primary;
   for (let step = 0; step < 8 && getContrastRatio(accent, panel) < 3; step += 1) {

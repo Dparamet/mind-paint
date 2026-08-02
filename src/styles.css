@@ -33,7 +33,8 @@ select {
 }
 
 .icon-button {
-  @apply inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel text-ink shadow-[0_1px_0_rgba(255,255,255,0.75)] transition hover:border-accent hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/35 disabled:cursor-not-allowed disabled:opacity-45;
+  @apply inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel text-ink transition hover:border-accent hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/35 disabled:cursor-not-allowed disabled:opacity-45;
+  box-shadow: 0 1px 0 rgb(var(--color-ink) / 0.12);
 }
 
 .tool-button {
@@ -41,7 +42,16 @@ select {
 }
 
 .tool-button-active {
-  @apply border-accent bg-accent text-panel shadow-[0_8px_18px_rgba(15,118,110,0.24)] hover:bg-accent hover:text-panel;
+  @apply border-accent bg-accent text-panel hover:bg-accent hover:text-panel;
+  box-shadow: 0 8px 18px rgb(var(--color-accent) / 0.24);
+}
+
+.theme-divider-shadow {
+  box-shadow: 0 1px 0 rgb(var(--color-ink) / 0.12);
+}
+
+.theme-accent-shadow {
+  box-shadow: 0 8px 18px rgb(var(--color-accent) / 0.24);
 }
 
 .canvas-theme-grid {

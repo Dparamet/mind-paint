@@ -5,6 +5,8 @@ import type Konva from 'konva';
 import { CanvasStage } from '../components/CanvasStage';
 import { useEditorStore } from '../store/useEditorStore';
 
+const shapeSpy = vi.hoisted(() => vi.fn());
+
 vi.mock('react-konva', () => {
   type StageProps = {
     children?: ReactNode;
@@ -48,6 +50,7 @@ vi.mock('react-konva', () => {
   const Layer = ({ children }: { children?: ReactNode }) => <>{children}</>;
   const Group = ({ children }: { children?: ReactNode }) => <>{children}</>;
   const Shape = forwardRef(function MockShape(_props, ref) {
+    shapeSpy(_props);
     useImperativeHandle(ref, () => ({
       setAttrs: () => undefined,
       visible: () => undefined,
@@ -157,5 +160,29 @@ describe('Canvas text placement', () => {
     expect(useEditorStore.getState().elements[0]).toEqual(
       expect.objectContaining({ type: 'text', width: 260, height: 72 }),
     );
+  });
+
+  it('themes editor chrome without changing artwork colors', () => {
+    const rectangle = {
+      id: 'rect-theme-test', layerId: 'layer-base', type: 'rect' as const,
+      x: 0, y: 0, width: 20, height: 20,
+      stroke: '#123456', fill: '#abcdef', strokeWidth: 2,
+    };
+    useEditorStore.setState({
+      tool: 'select',
+      theme: 'custom',
+      customThemePrimary: '#7c3aed',
+      customThemeOverrides: { panel: '#222222', accent: '#00ccaa' },
+      elements: [rectangle],
+    });
+    shapeSpy.mockClear();
+
+    render(<CanvasStage stageRef={createRef<Konva.Stage | null>()} />);
+
+    expect(shapeSpy).toHaveBeenCalledWith(expect.objectContaining({ stroke: '#00ccaa' }));
+    expect(useEditorStore.getState().elements[0]).toMatchObject({
+      stroke: '#123456',
+      fill: '#abcdef',
+    });
   });
 });

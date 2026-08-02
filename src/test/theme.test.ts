@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CUSTOM_PRIMARY,
   getContrastRatio,
+  hexToRgba,
   isHexColor,
   normalizeThemeSettings,
   resolveThemePalette,
@@ -67,5 +68,9 @@ describe('theme domain', () => {
       '--color-accent': '17 34 51',
       '--color-coral': '68 85 102',
     });
+  });
+
+  it('converts resolved hex colors to alpha editor chrome colors', () => {
+    expect(hexToRgba('#00ccaa', 0.08)).toBe('rgba(0, 204, 170, 0.08)');
   });
 });

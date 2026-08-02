@@ -32,7 +32,7 @@ Local-first drawing and thinking board built with React, Vite, TypeScript, Tailw
 - **Paste image** from clipboard
 
 ### Styling
-- **Application themes** — Warm, Light, Dark, or Custom; Custom derives a complete palette from one primary color and supports optional per-surface overrides
+- **Application themes** — Warm, Light, Dark, or Custom; Custom derives a complete palette from one primary color and can override App, Panels, Text, Borders, Accent, Error/Warning, and Canvas colors independently
 - **Stroke & Fill** color pickers — click swatch to open popover: 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted), and a custom native picker
 - **Opacity slider** — shown when element(s) selected (10 %–100 %)
 - **Stroke dash** — solid `—`, dashed `╌`, dotted `···` — applies to new and selected elements
@@ -104,7 +104,7 @@ npm run build
 npm test
 ```
 
-Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, themes, toolbar accessibility, and type guards. 132 tests total.
+Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, themes, toolbar accessibility, and type guards. 138 tests total.
 
 ## Storage
 
