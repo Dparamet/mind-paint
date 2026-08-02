@@ -184,8 +184,8 @@ export interface EditorDocument {
 export type SavedProject = EditorDocument;
 
 export type ThemeId = 'warm' | 'light' | 'dark' | 'custom';
-export type ThemeColorKey = 'paper' | 'panel' | 'ink' | 'line' | 'canvas';
-export type ThemePalette = Record<ThemeColorKey | 'accent' | 'coral', string>;
+export type ThemeColorKey = 'paper' | 'panel' | 'ink' | 'line' | 'accent' | 'coral' | 'canvas';
+export type ThemePalette = Record<ThemeColorKey, string>;
 export type CustomThemeOverrides = Partial<Record<ThemeColorKey, string>>;
 
 export interface ThemeSettings {

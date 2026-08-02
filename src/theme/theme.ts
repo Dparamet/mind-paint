@@ -50,18 +50,18 @@ function luminance(color: string): number {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
-function contrast(a: string, b: string): number {
+export function getContrastRatio(a: string, b: string): number {
   const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (lighter + 0.05) / (darker + 0.05);
 }
 
 function readableText(surface: string): string {
-  return contrast('#17202a', surface) >= contrast('#f8fafc', surface) ? '#17202a' : '#f8fafc';
+  return getContrastRatio('#17202a', surface) >= getContrastRatio('#f8fafc', surface) ? '#17202a' : '#f8fafc';
 }
 
 function readableAccent(primary: string, panel: string): string {
   let accent = primary;
-  for (let step = 0; step < 8 && contrast(accent, panel) < 3; step += 1) {
+  for (let step = 0; step < 8 && getContrastRatio(accent, panel) < 3; step += 1) {
     accent = mix(accent, '#000000', 0.12);
   }
   return accent;
@@ -76,7 +76,7 @@ export function normalizeThemeSettings(value: Record<string, unknown>): ThemeSet
   const input = value.customThemeOverrides && typeof value.customThemeOverrides === 'object'
     ? value.customThemeOverrides as Record<string, unknown>
     : {};
-  const keys: ThemeColorKey[] = ['paper', 'panel', 'ink', 'line', 'canvas'];
+  const keys: ThemeColorKey[] = ['paper', 'panel', 'ink', 'line', 'accent', 'coral', 'canvas'];
   const customThemeOverrides = Object.fromEntries(
     keys.filter((key) => isHexColor(input[key])).map((key) => [key, input[key] as string]),
   );
@@ -103,7 +103,10 @@ export function resolveThemePalette(settings: ThemeSettings): ThemePalette {
   const palette = { ...derived, ...settings.customThemeOverrides };
   return {
     ...palette,
-    ink: contrast(palette.ink, palette.paper) >= 4.5 ? palette.ink : readableText(palette.paper),
+    ink: getContrastRatio(palette.ink, palette.paper) >= 4.5 ? palette.ink : readableText(palette.paper),
+    accent: getContrastRatio(palette.accent, palette.panel) >= 3
+      ? palette.accent
+      : readableAccent(palette.accent, palette.panel),
   };
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CUSTOM_PRIMARY,
+  getContrastRatio,
   isHexColor,
   normalizeThemeSettings,
   resolveThemePalette,
@@ -38,5 +39,33 @@ describe('theme domain', () => {
     expect(isHexColor('#fff')).toBe(false);
     expect(toThemeCssVariables({ paper: '#ffffff', panel: '#ffffff', ink: '#000000', line: '#dddddd', accent: '#2563eb', coral: '#c84234', canvas: '#f8fafc' }))
       .toMatchObject({ '--color-paper': '255 255 255', '--color-accent': '37 99 235' });
+  });
+
+  it('normalizes and applies all seven advanced overrides', () => {
+    const customThemeOverrides = {
+      paper: '#101010', panel: '#202020', ink: '#ffffff', line: '#303030',
+      accent: '#00ffcc', coral: '#ff3366', canvas: '#181818',
+    };
+    const normalized = normalizeThemeSettings({
+      theme: 'custom',
+      customThemePrimary: '#7c3aed',
+      customThemeOverrides,
+    });
+
+    expect(normalized.customThemeOverrides).toEqual(customThemeOverrides);
+    expect(resolveThemePalette(normalized)).toMatchObject(customThemeOverrides);
+  });
+
+  it('reports contrast and exports every CSS variable', () => {
+    expect(getContrastRatio('#ffffff', '#ffffff')).toBe(1);
+    const variables = toThemeCssVariables(resolveThemePalette({
+      theme: 'custom',
+      customThemePrimary: '#7c3aed',
+      customThemeOverrides: { accent: '#112233', coral: '#445566' },
+    }));
+    expect(variables).toMatchObject({
+      '--color-accent': '17 34 51',
+      '--color-coral': '68 85 102',
+    });
   });
 });
