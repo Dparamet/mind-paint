@@ -7,6 +7,7 @@ import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUti
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, lineHeadPatch, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
+import { captureElementRaster, createRasterImageElement, findElementNode, worldPointToImageLocal } from '../utils/elementRasterUtils';
 import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgroundUtils';
 import { shouldCommitInlineText } from '../utils/textEditorUtils';
 import { normalizeTextBox } from '../utils/textBoxUtils';
@@ -93,6 +94,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     addElement,
     prependElement,
     updateElement,
+    replaceElement,
     deleteElement,
     deleteSelectedElements,
     strokeDash,
@@ -131,6 +133,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       addElement: s.addElement,
       prependElement: s.prependElement,
       updateElement: s.updateElement,
+      replaceElement: s.replaceElement,
       deleteElement: s.deleteElement,
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
@@ -164,7 +167,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
-  const imageEraseRef = useRef<{ id: string; strokeIndex: number } | null>(null);
+  const imageEraseStrokesRef = useRef(new Map<string, number>());
+  const eraseGestureHasHistoryRef = useRef(false);
+  const lastEraseTargetIdRef = useRef<string | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
   // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
@@ -449,72 +454,94 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
   }
 
+  function takeEraseHistorySlot() {
+    const trackHistory = !eraseGestureHasHistoryRef.current;
+    eraseGestureHasHistoryRef.current = true;
+    return trackHistory;
+  }
+
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
     const stage = stageRef.current;
-    const activeImageErase = imageEraseRef.current;
-    const hitNode = activeImageErase ? stage?.findOne(`#${activeImageErase.id}`) : stage?.getIntersection(screenPos);
-    const hitId = activeImageErase?.id ?? hitNode?.id();
-    const liveImage = useEditorStore.getState().elements.find(
+    const worldPos = getPointer(true);
+    if (!stage || !worldPos) return;
+    const liveElements = useEditorStore.getState().elements;
+    const elementIds = new Set(liveElements.map((element) => element.id));
+    const hitNode = findElementNode(stage.getIntersection(screenPos), elementIds);
+    const hitId = hitNode?.id();
+    const liveImage = liveElements.find(
       (element): element is ImageElement => element.id === hitId && element.type === 'image' && !element.isFill,
     );
 
-    if (liveImage && hitNode) {
+    if (liveImage) {
       const layerInfo = layers.find((layer) => layer.id === liveImage.layerId);
       if (!layerInfo?.visible || layerInfo.locked) return;
-      const localPoint = hitNode.getAbsoluteTransform().copy().invert().point(screenPos);
+      const localPoint = worldPointToImageLocal(liveImage, worldPos);
       const point = normalizeErasePoint(localPoint, liveImage.width, liveImage.height);
+      const activeStrokeIndex = lastEraseTargetIdRef.current === liveImage.id
+        ? imageEraseStrokesRef.current.get(liveImage.id)
+        : undefined;
 
-      if (!activeImageErase) {
+      if (activeStrokeIndex === undefined) {
         const stroke: ImageEraseStroke = {
           points: [point],
           size: Math.max(16, brushSize * 3) / Math.max(1, Math.min(liveImage.width, liveImage.height)),
         };
         const strokeIndex = liveImage.erasures?.length ?? 0;
-        imageEraseRef.current = { id: liveImage.id, strokeIndex };
-        updateElement(liveImage.id, { erasures: [...(liveImage.erasures ?? []), stroke] });
+        imageEraseStrokesRef.current.set(liveImage.id, strokeIndex);
+        updateElement(liveImage.id, { erasures: [...(liveImage.erasures ?? []), stroke] }, takeEraseHistorySlot());
       } else {
         const strokes = liveImage.erasures ?? [];
-        const stroke = strokes[activeImageErase.strokeIndex];
+        const stroke = strokes[activeStrokeIndex];
         if (!stroke) return;
         const nextStroke = appendErasePoint(stroke, point);
         if (nextStroke === stroke) return;
         const nextStrokes = [...strokes];
-        nextStrokes[activeImageErase.strokeIndex] = nextStroke;
+        nextStrokes[activeStrokeIndex] = nextStroke;
         updateElement(liveImage.id, { erasures: nextStrokes }, false);
       }
+      lastEraseTargetIdRef.current = liveImage.id;
       return;
     }
 
-    const worldPos = getPointer(true);
+    lastEraseTargetIdRef.current = null;
     // Cut freehand strokes into surviving pieces instead of deleting or
     // reconnecting the entire vector line when the eraser crosses its middle.
-    if (worldPos) {
-      const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
-      for (const el of elements) {
-        if (el.type !== 'line' || el.points.length <= 4) continue;
-        const layerInfo = layers.find((l) => l.id === el.layerId);
-        if (!layerInfo?.visible || layerInfo.locked) continue;
-        const pieces = erasePolyline(el.points, worldPos, eraserRadius);
-        if (pieces.length === 1 && pieces[0].length === el.points.length && pieces[0].every((point, i) => point === el.points[i])) continue;
-        if (!pieces.length) {
-          deleteElement(el.id);
-          continue;
-        }
-        updateElement(el.id, { points: pieces[0] }, false);
-        for (const points of pieces.slice(1)) {
-          addElement({ ...el, id: crypto.randomUUID(), points });
-        }
+    const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
+    for (const el of liveElements) {
+      if (el.type !== 'line' || el.points.length <= 4) continue;
+      const layerInfo = layers.find((l) => l.id === el.layerId);
+      if (!layerInfo?.visible || layerInfo.locked) continue;
+      const pieces = erasePolyline(el.points, worldPos, eraserRadius);
+      if (pieces.length === 1 && pieces[0].length === el.points.length && pieces[0].every((point, i) => point === el.points[i])) continue;
+      const trackHistory = takeEraseHistorySlot();
+      if (!pieces.length) {
+        deleteElement(el.id, trackHistory);
+        continue;
+      }
+      updateElement(el.id, { points: pieces[0] }, trackHistory);
+      for (const points of pieces.slice(1)) {
+        addElement({ ...el, id: crypto.randomUUID(), points }, false);
       }
     }
-    // Intersection-based deletion for shapes, straight lines, arrows, etc.
-    const node = stage?.getIntersection(screenPos);
-    if (!node) return;
-    const id = node.id();
-    const el = elements.find((e) => e.id === id);
-    if (!el) return;
-    if (el.type === 'line' && el.points.length > 4) return; // already handled above
-    const elementLayer = layers.find((l) => l.id === el.layerId);
-    if (elementLayer?.visible && !elementLayer.locked) deleteElement(id);
+
+    if (!hitNode) return;
+    const source = liveElements.find((element) => element.id === hitNode.id());
+    if (!source || (source.type === 'line' && source.points.length > 4)) return;
+    const sourceLayer = layers.find((layer) => layer.id === source.layerId);
+    if (!sourceLayer?.visible || sourceLayer.locked) return;
+
+    const capture = captureElementRaster(hitNode);
+    if (!capture) return;
+    const localPoint = { x: worldPos.x - capture.x, y: worldPos.y - capture.y };
+    const point = normalizeErasePoint(localPoint, capture.width, capture.height);
+    const stroke: ImageEraseStroke = {
+      points: [point],
+      size: Math.max(16, brushSize * 3) / Math.max(1, Math.min(capture.width, capture.height)),
+    };
+    const raster = createRasterImageElement(source, capture, stroke);
+    replaceElement(source.id, raster, takeEraseHistorySlot());
+    imageEraseStrokesRef.current.set(source.id, 0);
+    lastEraseTargetIdRef.current = source.id;
   }
 
   function commitEdit() {
@@ -542,6 +569,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if ('button' in event.evt && event.evt.button === 2 && rightClickEraser && canEditActiveLayer) {
       event.evt.preventDefault();
       rightEraseId.current = 'active';
+      imageEraseStrokesRef.current.clear();
+      eraseGestureHasHistoryRef.current = false;
+      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
       if (pos) eraseAtScreenPoint(pos);
       return;
@@ -644,6 +674,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'eraser') {
       isErasingRef.current = true;
+      imageEraseStrokesRef.current.clear();
+      eraseGestureHasHistoryRef.current = false;
+      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
       if (pos) eraseAtScreenPoint(pos);
       return;
@@ -1019,7 +1052,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     middlePanStart.current = null;
     drawStartRef.current = null;
     isErasingRef.current = false;
-    imageEraseRef.current = null;
+    imageEraseStrokesRef.current.clear();
+    eraseGestureHasHistoryRef.current = false;
+    lastEraseTargetIdRef.current = null;
     setIsMiddlePanning(false);
   }
 

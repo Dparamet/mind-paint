@@ -77,7 +77,7 @@ export default function App() {
           x: element.x + 40,
           y: element.y + 40,
         }) as CanvasElement);
-        copies.forEach(store.addElement);
+        copies.forEach((element) => store.addElement(element));
         store.setSelectedElementIds(copies.map((copy) => copy.id));
         internalClipboard = copies;
         return;

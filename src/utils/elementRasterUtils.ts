@@ -19,6 +19,15 @@ export interface CapturedRaster extends RectLike {
   src: string;
 }
 
+export function findElementNode(hitNode: Konva.Node | null, elementIds: ReadonlySet<string>): Konva.Node | null {
+  let node = hitNode;
+  while (node) {
+    if (elementIds.has(node.id())) return node;
+    node = node.parent;
+  }
+  return null;
+}
+
 export function getRasterCapture(bounds: RectLike): RasterCapture | null {
   if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)) return null;
   const x = Math.floor(bounds.x);

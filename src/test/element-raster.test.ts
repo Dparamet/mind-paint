@@ -3,6 +3,7 @@ import type { RectElement } from '../types/editor';
 import {
   captureElementRaster,
   createRasterImageElement,
+  findElementNode,
   getRasterCapture,
   worldPointToImageLocal,
 } from '../utils/elementRasterUtils';
@@ -23,6 +24,12 @@ const rect: RectElement = {
 };
 
 describe('element raster conversion', () => {
+  it('resolves the owning element node from a compound child hit', () => {
+    const group = { id: () => 'sticky-1', parent: null };
+    const child = { id: () => '', parent: group };
+    expect(findElementNode(child as never, new Set(['sticky-1']))).toBe(group);
+  });
+
   it('rounds capture bounds and caps oversized pixel ratios', () => {
     expect(getRasterCapture({ x: 10.2, y: 20.8, width: 100.1, height: 60.2 })).toEqual({
       x: 10,
