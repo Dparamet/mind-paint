@@ -7,6 +7,7 @@ import { ProjectManager } from './components/ProjectManager';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toolbar } from './components/Toolbar';
 import { Topbar } from './components/Topbar';
+import { ThemeRoot } from './components/ThemeRoot';
 import { getProject, listProjects } from './db/indexedDb';
 import { lastProjectKey, useEditorStore } from './store/useEditorStore';
 import type { CanvasElement } from './types/editor';
@@ -17,7 +18,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const saveCurrentProject = useEditorStore((state) => state.saveCurrentProject);
   const loadProject = useEditorStore((state) => state.loadProject);
-  const autosaveKey = useEditorStore((state) => `${state.id}:${state.updatedAt}:${state.elements.length}:${state.layers.length}`);
+  const autosaveKey = useEditorStore((state) => `${state.id}:${state.updatedAt}:${state.elements.length}:${state.layers.length}:${state.backgroundMode}`);
   const saveStatus = useEditorStore((state) => state.saveStatus);
 
   useEffect(() => {
@@ -76,13 +77,17 @@ export default function App() {
           x: element.x + 40,
           y: element.y + 40,
         }) as CanvasElement);
-        copies.forEach(store.addElement);
+        copies.forEach((element) => store.addElement(element));
         store.setSelectedElementIds(copies.map((copy) => copy.id));
         internalClipboard = copies;
         return;
       }
       const tool = store.shortcuts[key];
-      if (tool) store.setTool(tool);
+      if (tool) {
+        if (tool === 'arrow') store.setLineHead('end');
+        if (tool === 'line') store.setLineHead('none');
+        store.setTool(tool);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -110,7 +115,7 @@ export default function App() {
   }, [autosaveKey, saveCurrentProject, saveStatus]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-paper text-ink">
+    <ThemeRoot>
       <Toolbar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar stageRef={stageRef} onOpenSettings={() => setSettingsOpen(true)} />
@@ -121,13 +126,13 @@ export default function App() {
         <PropertiesPanel />
         <LayerPanel />
         <ProjectManager />
-        <div className="shrink-0 border-t border-line bg-sunshine/10 px-4 py-2 text-xs font-medium text-ink/70">
+        <div className="shrink-0 border-t border-line bg-paper px-4 py-2 text-xs font-medium text-ink/70">
           {saveStatus === 'saving' && <span className="text-accent">Saving…</span>}
           {saveStatus === 'saved' && <span>Saved</span>}
           {saveStatus === 'dirty' && <span className="text-coral">Unsaved changes</span>}
           {saveStatus === 'error' && <span className="text-coral">Save failed</span>}
         </div>
       </div>
-    </div>
+    </ThemeRoot>
   );
 }

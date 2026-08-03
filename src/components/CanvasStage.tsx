@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Arrow, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, RegularPolygon, Stage, Star as KonvaStar, Text, Transformer } from 'react-konva';
+import { Arrow, Circle as KonvaCircle, Ellipse, Group, Image as KonvaImage, Layer as KonvaLayer, Line, Rect, RegularPolygon, Stage, Star as KonvaStar, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
 import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
-import { DASH_MAP, getElementBounds, isElementInLasso } from '../utils/elementUtils';
+import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, lineHeadPatch, moveElementOrigins } from '../utils/elementUtils';
+import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
+import { captureElementRaster, createRasterImageElement, findElementNode, worldPointToImageLocal } from '../utils/elementRasterUtils';
+import { CANVAS_BACKGROUND_ID, getCanvasBackgroundFill } from '../utils/backgroundUtils';
+import { shouldCommitInlineText } from '../utils/textEditorUtils';
+import { normalizeTextBox } from '../utils/textBoxUtils';
 import { useEditorStore } from '../store/useEditorStore';
-import type { CanvasElement, CircleElement, ImageElement, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
+import { hexToRgba, resolveThemePalette } from '../theme/theme';
+import type { CanvasElement, CircleElement, ImageElement, ImageEraseStroke, PolygonElement, RectElement, StarElement, StickyElement, TextElement } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
 
@@ -39,10 +45,15 @@ function useLoadedImage(src: string) {
 }
 
 function ImageNode({ element, selectable }: { element: ImageElement; selectable: boolean }) {
-  const image = useLoadedImage(element.src);
+  const { erasures = [], src, isFill, ...imageProps } = element;
+  const image = useLoadedImage(src);
+  const maskedImage = useMemo(
+    () => image && erasures.length ? renderMaskedImage(image, element.width, element.height, erasures) : image,
+    [erasures, image, element.height, element.width],
+  );
   // Fill rasters are background paint: never hit-tested, otherwise the
   // full-viewport image swallows every stage click (breaks marquee/lasso)
-  return <KonvaImage image={image ?? undefined} {...element} draggable={selectable && !element.isFill} listening={!element.isFill} />;
+  return <KonvaImage image={maskedImage ?? undefined} {...imageProps} draggable={selectable && !isFill} listening={!isFill} />;
 }
 
 function isSelectable(el: CanvasElement) {
@@ -60,6 +71,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     layers,
     elements,
     tool,
+    backgroundMode,
     activeLayerId,
     strokeColor,
     fillColor,
@@ -82,9 +94,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     addElement,
     prependElement,
     updateElement,
+    replaceElement,
     deleteElement,
     deleteSelectedElements,
     strokeDash,
+    lineHead,
+    theme,
+    customThemePrimary,
+    customThemeOverrides,
     // useShallow: only re-render when a picked slice changes, not on every store write
   } = useEditorStore(
     useShallow((s) => ({
@@ -93,6 +110,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       layers: s.layers,
       elements: s.elements,
       tool: s.tool,
+      backgroundMode: s.backgroundMode,
       activeLayerId: s.activeLayerId,
       strokeColor: s.strokeColor,
       fillColor: s.fillColor,
@@ -115,10 +133,19 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       addElement: s.addElement,
       prependElement: s.prependElement,
       updateElement: s.updateElement,
+      replaceElement: s.replaceElement,
       deleteElement: s.deleteElement,
       deleteSelectedElements: s.deleteSelectedElements,
       strokeDash: s.strokeDash,
+      lineHead: s.lineHead,
+      theme: s.theme,
+      customThemePrimary: s.customThemePrimary,
+      customThemeOverrides: s.customThemeOverrides,
     })),
+  );
+  const themePalette = useMemo(
+    () => resolveThemePalette({ theme, customThemePrimary, customThemeOverrides }),
+    [customThemeOverrides, customThemePrimary, theme],
   );
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLElement>(null);
@@ -140,6 +167,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const isErasingRef = useRef(false);
+  const imageEraseStrokesRef = useRef(new Map<string, number>());
+  const eraseGestureHasHistoryRef = useRef(false);
+  const lastEraseTargetIdRef = useRef<string | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
   // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
@@ -148,7 +178,6 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     points?: number[];
     patch: Partial<CanvasElement> | null;
   } | null>(null);
-  const editingCancelledRef = useRef(false);
   // ponytail: refs + batchDraw instead of state — eliminates 60fps React re-renders during drag
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -157,7 +186,18 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const lassoLineRef = useRef<Konva.Line>(null);
   const lassoActiveRef = useRef(false);
   // Group move: drag inside an existing selection moves it instead of re-selecting
-  const groupMoveRef = useRef<{ start: { x: number; y: number }; origins: { id: string; x: number; y: number }[]; moved: boolean } | null>(null);
+  const groupMoveRef = useRef<{
+    start: { x: number; y: number };
+    origins: { id: string; x: number; y: number }[];
+    dx: number;
+    dy: number;
+    moved: boolean;
+  } | null>(null);
+  const textDraftRef = useRef<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
+  const textDraftKonvaRef = useRef<Konva.Rect>(null);
   const suppressClickRef = useRef(false);
 
   const activeLayer = layers.find((layer) => layer.id === activeLayerId);
@@ -168,6 +208,30 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     () => layers.map((layer) => ({ layer, elements: elements.filter((element) => element.layerId === layer.id) })),
     [elements, layers],
   );
+  const editableLayerIds = useMemo(
+    () => new Set(layers.filter((layer) => layer.visible && !layer.locked).map((layer) => layer.id)),
+    [layers],
+  );
+  const movableSelection = useMemo(
+    () => elements.filter((element) => selectedElementIds.includes(element.id) && editableLayerIds.has(element.layerId)),
+    [editableLayerIds, elements, selectedElementIds],
+  );
+  const selectionBounds = useMemo(() => getElementsBounds(movableSelection), [movableSelection]);
+  const stageSurfaceClass = backgroundMode === 'transparent'
+    ? 'canvas-transparent-grid'
+    : backgroundMode === 'greenScreen'
+      ? 'bg-[#00FF00]'
+      : showGrid
+        ? 'canvas-theme-grid'
+        : 'bg-canvas';
+
+  useEffect(() => {
+    const id = editingIdRef.current;
+    if (!id || elements.some((element) => element.id === id)) return;
+    editingIdRef.current = null;
+    _setEditingId(null);
+    setEditingText('');
+  }, [elements]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -216,10 +280,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
   useEffect(() => {
     const onPaste = async (event: ClipboardEvent) => {
-      const src = await getImageFromClipboard(event);
-      if (!src || !canEditActiveLayer) return;
-      event.preventDefault();
-      await insertImage(src, { x: 140, y: 120 });
+      try {
+        const src = await getImageFromClipboard(event);
+        if (!src || !canEditActiveLayer) return;
+        event.preventDefault();
+        await insertImage(src, { x: 140, y: 120 });
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Unable to paste image.');
+      }
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -386,43 +454,99 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     }
   }
 
+  function takeEraseHistorySlot() {
+    const trackHistory = !eraseGestureHasHistoryRef.current;
+    eraseGestureHasHistoryRef.current = true;
+    return trackHistory;
+  }
+
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
+    const stage = stageRef.current;
     const worldPos = getPointer(true);
+    if (!stage || !worldPos) return;
+    const liveElements = useEditorStore.getState().elements;
+    const elementIds = new Set(liveElements.map((element) => element.id));
+    const hitNode = findElementNode(stage.getIntersection(screenPos), elementIds);
+    const hitId = hitNode?.id();
+    const liveImage = liveElements.find(
+      (element): element is ImageElement => element.id === hitId && element.type === 'image' && !element.isFill,
+    );
+
+    if (liveImage) {
+      const layerInfo = layers.find((layer) => layer.id === liveImage.layerId);
+      if (!layerInfo?.visible || layerInfo.locked) return;
+      const localPoint = worldPointToImageLocal(liveImage, worldPos);
+      const point = normalizeErasePoint(localPoint, liveImage.width, liveImage.height);
+      const activeStrokeIndex = lastEraseTargetIdRef.current === liveImage.id
+        ? imageEraseStrokesRef.current.get(liveImage.id)
+        : undefined;
+
+      if (activeStrokeIndex === undefined) {
+        const stroke: ImageEraseStroke = {
+          points: [point],
+          size: Math.max(16, brushSize * 3) / Math.max(1, Math.min(liveImage.width, liveImage.height)),
+        };
+        const strokeIndex = liveImage.erasures?.length ?? 0;
+        imageEraseStrokesRef.current.set(liveImage.id, strokeIndex);
+        updateElement(liveImage.id, { erasures: [...(liveImage.erasures ?? []), stroke] }, takeEraseHistorySlot());
+      } else {
+        const strokes = liveImage.erasures ?? [];
+        const stroke = strokes[activeStrokeIndex];
+        if (!stroke) return;
+        const nextStroke = appendErasePoint(stroke, point);
+        if (nextStroke === stroke) return;
+        const nextStrokes = [...strokes];
+        nextStrokes[activeStrokeIndex] = nextStroke;
+        updateElement(liveImage.id, { erasures: nextStrokes }, false);
+      }
+      lastEraseTargetIdRef.current = liveImage.id;
+      return;
+    }
+
+    lastEraseTargetIdRef.current = null;
     // Cut freehand strokes into surviving pieces instead of deleting or
     // reconnecting the entire vector line when the eraser crosses its middle.
-    if (worldPos) {
-      const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
-      for (const el of elements) {
-        if (el.type !== 'line' || el.points.length <= 4) continue;
-        const layerInfo = layers.find((l) => l.id === el.layerId);
-        if (!layerInfo?.visible || layerInfo.locked) continue;
-        const pieces = erasePolyline(el.points, worldPos, eraserRadius);
-        if (pieces.length === 1 && pieces[0].length === el.points.length && pieces[0].every((point, i) => point === el.points[i])) continue;
-        if (!pieces.length) {
-          deleteElement(el.id);
-          continue;
-        }
-        updateElement(el.id, { points: pieces[0] }, false);
-        for (const points of pieces.slice(1)) {
-          addElement({ ...el, id: crypto.randomUUID(), points });
-        }
+    const eraserRadius = Math.max(brushSize * 1.5, 8) / scale;
+    for (const el of liveElements) {
+      if (el.type !== 'line' || el.points.length <= 4) continue;
+      const layerInfo = layers.find((l) => l.id === el.layerId);
+      if (!layerInfo?.visible || layerInfo.locked) continue;
+      const pieces = erasePolyline(el.points, worldPos, eraserRadius);
+      if (pieces.length === 1 && pieces[0].length === el.points.length && pieces[0].every((point, i) => point === el.points[i])) continue;
+      const trackHistory = takeEraseHistorySlot();
+      if (!pieces.length) {
+        deleteElement(el.id, trackHistory);
+        continue;
+      }
+      updateElement(el.id, { points: pieces[0] }, trackHistory);
+      for (const points of pieces.slice(1)) {
+        addElement({ ...el, id: crypto.randomUUID(), points }, false);
       }
     }
-    // Intersection-based deletion for shapes, straight lines, arrows, etc.
-    const node = stageRef.current?.getIntersection(screenPos);
-    if (!node) return;
-    const id = node.id();
-    const el = elements.find((e) => e.id === id);
-    if (!el) return;
-    if (el.type === 'line' && el.points.length > 4) return; // already handled above
-    const elementLayer = layers.find((l) => l.id === el.layerId);
-    if (elementLayer?.visible && !elementLayer.locked) deleteElement(id);
+
+    if (!hitNode) return;
+    const source = liveElements.find((element) => element.id === hitNode.id());
+    if (!source || (source.type === 'line' && source.points.length > 4)) return;
+    const sourceLayer = layers.find((layer) => layer.id === source.layerId);
+    if (!sourceLayer?.visible || sourceLayer.locked) return;
+
+    const capture = captureElementRaster(hitNode);
+    if (!capture) return;
+    const localPoint = { x: worldPos.x - capture.x, y: worldPos.y - capture.y };
+    const point = normalizeErasePoint(localPoint, capture.width, capture.height);
+    const stroke: ImageEraseStroke = {
+      points: [point],
+      size: Math.max(16, brushSize * 3) / Math.max(1, Math.min(capture.width, capture.height)),
+    };
+    const raster = createRasterImageElement(source, capture, stroke);
+    replaceElement(source.id, raster, takeEraseHistorySlot());
+    imageEraseStrokesRef.current.set(source.id, 0);
+    lastEraseTargetIdRef.current = source.id;
   }
 
   function commitEdit() {
-    if (editingCancelledRef.current) { editingCancelledRef.current = false; return; }
-    if (!editingId) return;
-    const id = editingId;
+    const id = editingIdRef.current;
+    if (!id) return;
     const el = elements.find((e) => e.id === id);
     const stickyLike = el && isStickyLike(el.type);
     setEditingId(null);
@@ -434,9 +558,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   function cancelEdit() {
-    editingCancelledRef.current = true;
-    if (!editingId) return;
-    const id = editingId;
+    const id = editingIdRef.current;
+    if (!id) return;
     setEditingId(null);
     const el = elements.find((e) => e.id === id);
     if (el && 'text' in el && !el.text) deleteElement(id);
@@ -446,6 +569,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if ('button' in event.evt && event.evt.button === 2 && rightClickEraser && canEditActiveLayer) {
       event.evt.preventDefault();
       rightEraseId.current = 'active';
+      imageEraseStrokesRef.current.clear();
+      eraseGestureHasHistoryRef.current = false;
+      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
       if (pos) eraseAtScreenPoint(pos);
       return;
@@ -475,12 +601,13 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       // select tool with a single selection keeps Konva's own drag
       if (selectedElementIds.includes(hit) && (tool === 'lasso' || selectedElementIds.length > 1)) {
         const raw = getPointer(true) ?? point;
-        const editable = new Set(layers.filter((l) => l.visible && !l.locked).map(l => l.id));
         groupMoveRef.current = {
           start: raw,
           origins: elements
-            .filter((e) => selectedElementIds.includes(e.id) && editable.has(e.layerId))
+            .filter((e) => selectedElementIds.includes(e.id) && editableLayerIds.has(e.layerId))
             .map((e) => ({ id: e.id, x: e.x, y: e.y })),
+          dx: 0,
+          dy: 0,
           moved: false,
         };
         return;
@@ -547,6 +674,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'eraser') {
       isErasingRef.current = true;
+      imageEraseStrokesRef.current.clear();
+      eraseGestureHasHistoryRef.current = false;
+      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
       if (pos) eraseAtScreenPoint(pos);
       return;
@@ -572,38 +702,21 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'line' || tool === 'arrow') {
       drawDraftRef.current = { kind: 'segment', points: [point.x, point.y, point.x, point.y], patch: null };
-      if (tool === 'line') {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'line',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: 'transparent',
-          strokeWidth: brushSize,
-          tension: 0,
-          lineCap: 'round',
-          lineJoin: 'round',
-          dash: DASH_MAP[strokeDash],
-        });
-      } else {
-        addElement({
-          id,
-          layerId: activeLayerId,
-          type: 'arrow',
-          x: 0,
-          y: 0,
-          points: [point.x, point.y, point.x, point.y],
-          stroke: strokeColor,
-          fill: strokeColor,
-          strokeWidth: brushSize,
-          pointerLength: 18,
-          pointerWidth: 18,
-          dash: DASH_MAP[strokeDash],
-        });
-      }
+      const effectiveHead = tool === 'line' ? 'none' : lineHead === 'none' ? 'end' : lineHead;
+      addElement({
+        id,
+        layerId: activeLayerId,
+        x: 0,
+        y: 0,
+        points: [point.x, point.y, point.x, point.y],
+        stroke: strokeColor,
+        fill: effectiveHead === 'none' ? 'transparent' : strokeColor,
+        strokeWidth: brushSize,
+        dash: DASH_MAP[strokeDash],
+        ...(effectiveHead === 'none'
+          ? { type: 'line', tension: 0, lineCap: 'round', lineJoin: 'round' }
+          : lineHeadPatch(effectiveHead)),
+      } as CanvasElement);
     }
 
     if (tool === 'rectangle' || tool === 'sticky' || tool === 'mindNode' || tool === 'speech') {
@@ -717,26 +830,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'text') {
       drawingId.current = null;
-      const element: TextElement = {
-        id,
-        layerId: activeLayerId,
-        type: 'text',
-        x: point.x,
-        y: point.y,
-        text: '',
-        width: 260,
-        fontSize,
-        fontFamily,
-        fontStyle,
-        align: textAlign,
-        stroke: strokeColor,
-        fill: strokeColor,
-        strokeWidth: 0,
-      };
-      addElement(element);
-      setSelectedElementId(id);
-      setEditingId(id);
-      setEditingText('');
+      textDraftRef.current = { start: point, current: point };
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.setAttrs({ x: point.x, y: point.y, width: 0, height: 0 });
+        textDraftKonvaRef.current.visible(true);
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
+      }
       return;
     }
   }
@@ -767,10 +866,14 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const dy = p.y - g.start.y;
         // small threshold so a plain click (select) doesn't count as a move
         if (!g.moved && dx * dx + dy * dy < 4) return;
-        const first = !g.moved;
         g.moved = true;
-        // history snapshot only on the very first tracked update (pre-move positions)
-        g.origins.forEach((o, i) => updateElement(o.id, { x: o.x + dx, y: o.y + dy }, first && i === 0));
+        g.dx = dx;
+        g.dy = dy;
+        for (const origin of g.origins) {
+          const node = stageRef.current?.findOne(`#${origin.id}`);
+          node?.position({ x: origin.x + dx, y: origin.y + dy });
+        }
+        transformerRef.current?.getLayer()?.batchDraw();
       }
       return;
     }
@@ -802,6 +905,17 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           marqueeKonvaRef.current.setAttrs({ x: m.x, y: m.y, width: m.w, height: m.h });
           marqueeKonvaRef.current.getLayer()?.batchDraw();
         }
+      }
+      return;
+    }
+
+    if (textDraftRef.current && tool === 'text') {
+      const point = getPointer();
+      if (!point) return;
+      textDraftRef.current.current = point;
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.setAttrs(normalizeTextBox(textDraftRef.current.start, point));
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
       }
       return;
     }
@@ -855,12 +969,45 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
       const g = groupMoveRef.current;
       if (g.moved) {
         suppressClickRef.current = true; // Konva fires click after mouseup; don't collapse selection
-        for (const o of g.origins) {
-          const el = elements.find((e) => e.id === o.id);
-          if (el) updateElement(o.id, { x: snapValue(el.x), y: snapValue(el.y) }, false);
-        }
+        moveElementOrigins(g.origins, g.dx, g.dy).forEach((position, index) => {
+          updateElement(
+            position.id,
+            { x: snapValue(position.x), y: snapValue(position.y) },
+            index === 0,
+          );
+        });
       }
       groupMoveRef.current = null;
+      return;
+    }
+    if (textDraftRef.current) {
+      const draft = textDraftRef.current;
+      const end = getPointer() ?? draft.current;
+      const bounds = normalizeTextBox(draft.start, end);
+      const id = crypto.randomUUID();
+      const element: TextElement = {
+        id,
+        layerId: activeLayerId,
+        type: 'text',
+        ...bounds,
+        text: '',
+        fontSize,
+        fontFamily,
+        fontStyle,
+        align: textAlign,
+        stroke: strokeColor,
+        fill: strokeColor,
+        strokeWidth: 0,
+      };
+      textDraftRef.current = null;
+      if (textDraftKonvaRef.current) {
+        textDraftKonvaRef.current.visible(false);
+        textDraftKonvaRef.current.getLayer()?.batchDraw();
+      }
+      addElement(element);
+      setSelectedElementId(id);
+      setEditingId(id);
+      setEditingText('');
       return;
     }
     if (lassoActiveRef.current) {
@@ -905,6 +1052,9 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     middlePanStart.current = null;
     drawStartRef.current = null;
     isErasingRef.current = false;
+    imageEraseStrokesRef.current.clear();
+    eraseGestureHasHistoryRef.current = false;
+    lastEraseTargetIdRef.current = null;
     setIsMiddlePanning(false);
   }
 
@@ -984,6 +1134,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         x: node.x(),
         y: node.y(),
         width: Math.max(80, (element as TextElement).width * scaleX),
+        height: Math.max(36, ((element as TextElement).height ?? 72) * scaleY),
         rotation: node.rotation(),
       });
     }
@@ -1066,12 +1217,22 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     };
 
     if (element.type === 'line') return <Line key={element.id} {...common} points={element.points} tension={element.tension} lineCap={element.lineCap} lineJoin={element.lineJoin} />;
-    if (element.type === 'arrow') return <Arrow key={element.id} {...common} points={element.points} pointerLength={element.pointerLength} pointerWidth={element.pointerWidth} />;
+    if (element.type === 'arrow') return (
+      <Arrow
+        key={element.id}
+        {...common}
+        points={element.points}
+        pointerLength={element.pointerLength}
+        pointerWidth={element.pointerWidth}
+        pointerAtBeginning={element.pointerAtBeginning ?? false}
+        pointerAtEnding={element.pointerAtEnding ?? true}
+      />
+    );
     if (element.type === 'rect') return <Rect key={element.id} {...common} width={element.width} height={element.height} />;
     if (element.type === 'circle') return <Ellipse key={element.id} {...common} radiusX={element.radiusX} radiusY={element.radiusY} />;
     if (element.type === 'polygon') return <RegularPolygon key={element.id} {...common} sides={(element as PolygonElement).sides} radius={(element as PolygonElement).radius} />;
     if (element.type === 'star') return <KonvaStar key={element.id} {...common} numPoints={(element as StarElement).numPoints} outerRadius={(element as StarElement).outerRadius} innerRadius={(element as StarElement).innerRadius} />;
-    if (element.type === 'text') return <Text key={element.id} {...common} text={element.text} width={element.width} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
+    if (element.type === 'text') return <Text key={element.id} {...common} text={element.text} width={element.width} height={element.height} fontSize={element.fontSize} fontFamily={element.fontFamily} fontStyle={element.fontStyle} align={element.align} />;
     if (element.type === 'sticky') {
       return (
         <Group key={element.id} {...common}>
@@ -1101,7 +1262,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   }
 
   return (
-    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-paper">
+    <main ref={containerRef} className="relative flex flex-1 items-center justify-center overflow-hidden bg-canvas">
       <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md border border-line bg-panel px-2 py-1 text-xs font-medium text-ink shadow-soft">
         <span>{Math.round(scale * 100)}%</span>
         <input
@@ -1129,7 +1290,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         y={stagePosition.y}
         scale={{ x: scale, y: scale }}
         draggable={isSpacePressed}
-        className={`${showGrid ? 'bg-panel [background-image:linear-gradient(#cfe4db_1px,transparent_1px),linear-gradient(90deg,#cfe4db_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-panel'} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
+        className={`${stageSurfaceClass} ${isMiddlePanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePointerDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1146,7 +1307,15 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         }}
       >
         <KonvaLayer listening={false}>
-          <Rect x={-100000} y={-100000} width={200000} height={200000} fill="#fffaf0" />
+          <Rect
+            id={CANVAS_BACKGROUND_ID}
+            x={-100000}
+            y={-100000}
+            width={200000}
+            height={200000}
+            fill={getCanvasBackgroundFill(backgroundMode, themePalette.canvas)}
+            listening={false}
+          />
         </KonvaLayer>
         {elementsByLayer.map(({ layer, elements: layerElements }) => (
           <KonvaLayer key={layer.id} visible={layer.visible} listening={!layer.locked}>
@@ -1154,19 +1323,83 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
           </KonvaLayer>
         ))}
         <KonvaLayer>
-          <Transformer ref={transformerRef} rotateEnabled enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']} />
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled
+            borderStroke={themePalette.accent}
+            anchorStroke={themePalette.accent}
+            anchorFill={themePalette.panel}
+            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
+          />
+          <Rect
+            ref={textDraftKonvaRef}
+            visible={false}
+            x={0}
+            y={0}
+            width={0}
+            height={0}
+            stroke={themePalette.accent}
+            strokeWidth={1.5 / scale}
+            dash={[6 / scale, 4 / scale]}
+            fill={hexToRgba(themePalette.accent, 0.08)}
+            listening={false}
+          />
+          {selectionBounds && selectedElementIds.length > 1 && (tool === 'lasso' || tool === 'select') && (
+            <Group
+              id="selection-move-handle"
+              x={selectionBounds.x + selectionBounds.w / 2}
+              y={selectionBounds.y + selectionBounds.h / 2}
+              draggable
+              onMouseDown={(event) => {
+                event.cancelBubble = true;
+              }}
+              onTouchStart={(event) => {
+                event.cancelBubble = true;
+              }}
+              onDragStart={(event) => {
+                event.cancelBubble = true;
+                groupMoveRef.current = {
+                  start: { x: event.target.x(), y: event.target.y() },
+                  origins: movableSelection.map((element) => ({ id: element.id, x: element.x, y: element.y })),
+                  dx: 0,
+                  dy: 0,
+                  moved: false,
+                };
+              }}
+              onDragMove={(event) => {
+                const move = groupMoveRef.current;
+                if (!move) return;
+                move.dx = event.target.x() - move.start.x;
+                move.dy = event.target.y() - move.start.y;
+                move.moved = true;
+                for (const origin of move.origins) {
+                  const node = stageRef.current?.findOne(`#${origin.id}`);
+                  node?.position({ x: origin.x + move.dx, y: origin.y + move.dy });
+                }
+                transformerRef.current?.getLayer()?.batchDraw();
+              }}
+              onDragEnd={(event) => {
+                event.cancelBubble = true;
+                handleMouseUp();
+              }}
+            >
+              <KonvaCircle radius={13 / scale} fill={themePalette.accent} shadowColor={themePalette.ink} shadowBlur={5 / scale} shadowOpacity={0.2} />
+              <Arrow points={[-6 / scale, 0, 6 / scale, 0]} stroke={themePalette.panel} fill={themePalette.panel} strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+              <Arrow points={[6 / scale, 0, -6 / scale, 0]} stroke={themePalette.panel} fill={themePalette.panel} strokeWidth={1.8 / scale} pointerLength={4 / scale} pointerWidth={4 / scale} />
+            </Group>
+          )}
           <Rect
             ref={marqueeKonvaRef}
             visible={false} x={0} y={0} width={0} height={0}
-            stroke="#4c7eff" strokeWidth={1 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke={themePalette.accent} strokeWidth={1 / scale}
+            dash={[4 / scale, 4 / scale]} fill={hexToRgba(themePalette.accent, 0.06)}
             listening={false}
           />
           <Line
             ref={lassoLineRef}
             visible={false} points={EMPTY_POINTS}
-            stroke="#4c7eff" strokeWidth={1.5 / scale}
-            dash={[4 / scale, 4 / scale]} fill="rgba(76,126,255,0.06)"
+            stroke={themePalette.accent} strokeWidth={1.5 / scale}
+            dash={[4 / scale, 4 / scale]} fill={hexToRgba(themePalette.accent, 0.06)}
             closed listening={false}
           />
         </KonvaLayer>
@@ -1181,7 +1414,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
         const rawFs = (el as { fontSize?: number }).fontSize;
         const fs = rawFs != null ? rawFs * scale : 16;
         const stickyLike = isStickyLike(el.type);
-        const elH = ('height' in el ? (el as { height: number }).height : 0) * scale;
+        const elH = ('height' in el && typeof el.height === 'number' ? el.height : 0) * scale;
         return (
           <textarea
             key={editingId}
@@ -1199,10 +1432,12 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
                 color: el.stroke ?? '#17202a',
                 boxShadow: el.type === 'sticky' ? '0 4px 12px rgba(23,32,42,0.12)' : undefined,
               } : {
+                height: elH || Math.max(72, fs * 3),
                 minHeight: Math.max(32, fs * 2),
-                border: '2px solid #0f766e',
+                border: `2px solid ${themePalette.accent}`,
                 borderRadius: '4px',
-                backgroundColor: 'rgba(255,255,255,0.95)',
+                backgroundColor: hexToRgba(themePalette.panel, 0.95),
+                color: themePalette.ink,
                 padding: '4px',
               }),
             }}
@@ -1211,7 +1446,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-              else if (e.key === 'Enter' && !e.shiftKey && el.type === 'text') { e.preventDefault(); commitEdit(); }
+              else if (shouldCommitInlineText(e.key, e.shiftKey, el.type)) { e.preventDefault(); commitEdit(); }
             }}
           />
         );

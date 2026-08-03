@@ -1,18 +1,33 @@
 import { create } from 'zustand';
 import type {
+  BackgroundMode,
   CanvasElement,
   EditorDocument,
   EditorSettings,
   Layer,
+  LineHead,
   SavedProject,
   StrokeDash,
+  ThemeColorKey,
+  ThemeId,
   Tool,
 } from '../types/editor';
 import { saveProject } from '../db/indexedDb';
+import { DEFAULT_CUSTOM_PRIMARY, isHexColor, normalizeThemeSettings } from '../theme/theme';
 
 const settingsKey = 'mind-paint-settings';
 const lastProjectKey = 'mind-paint-last-project-id';
 const defaultLayerId = 'layer-base';
+const defaultBackgroundMode: BackgroundMode = 'normal';
+const defaultLineHead: LineHead = 'none';
+
+function normalizeBackgroundMode(value: unknown): BackgroundMode {
+  return value === 'transparent' || value === 'greenScreen' ? value : defaultBackgroundMode;
+}
+
+function normalizeLineHead(value: unknown): LineHead {
+  return value === 'end' || value === 'start' || value === 'both' ? value : defaultLineHead;
+}
 
 const defaultSettings: EditorSettings = {
   tool: 'select',
@@ -31,6 +46,10 @@ const defaultSettings: EditorSettings = {
   textAlign: 'left',
   rightClickEraser: true,
   strokeDash: 'solid',
+  lineHead: defaultLineHead,
+  theme: 'warm',
+  customThemePrimary: DEFAULT_CUSTOM_PRIMARY,
+  customThemeOverrides: {},
   shortcuts: {
     v: 'select',
     l: 'lasso',
@@ -48,7 +67,14 @@ const defaultSettings: EditorSettings = {
 function loadSettings(): EditorSettings {
   try {
     const raw = localStorage.getItem(settingsKey);
-    return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
+    if (!raw) return defaultSettings;
+    const parsed = JSON.parse(raw) as Partial<EditorSettings>;
+    return {
+      ...defaultSettings,
+      ...parsed,
+      ...normalizeThemeSettings(parsed as Record<string, unknown>),
+      lineHead: normalizeLineHead(parsed.lineHead),
+    };
   } catch {
     return defaultSettings;
   }
@@ -63,6 +89,7 @@ function createDocument(): EditorDocument {
     height: 1000,
     layers: [{ id: defaultLayerId, name: 'Layer 1', visible: true, locked: false }],
     elements: [],
+    backgroundMode: defaultBackgroundMode,
     createdAt: now,
     updatedAt: now,
   };
@@ -80,6 +107,7 @@ interface EditorStore extends EditorDocument, EditorSettings {
   isSaving: boolean;
   saveStatus: SaveStatus;
   setTool: (tool: Tool) => void;
+  setBackgroundMode: (mode: BackgroundMode) => void;
   setStrokeColor: (color: string) => void;
   setFillColor: (color: string) => void;
   setBrushSize: (size: number) => void;
@@ -94,15 +122,21 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setTextAlign: (align: EditorSettings['textAlign']) => void;
   setRightClickEraser: (enabled: boolean) => void;
   setStrokeDash: (dash: StrokeDash) => void;
+  setLineHead: (head: LineHead) => void;
+  setTheme: (theme: ThemeId) => void;
+  setCustomThemePrimary: (color: string) => void;
+  setCustomThemeOverride: (key: ThemeColorKey, color: string | null) => void;
+  resetCustomTheme: () => void;
   setShortcut: (tool: Tool, key: string) => void;
   setName: (name: string) => void;
   setSelectedElementId: (id: string | null) => void;
   setSelectedElementIds: (ids: string[]) => void;
   toggleSelectedElementId: (id: string) => void;
-  addElement: (element: CanvasElement) => void;
+  addElement: (element: CanvasElement, trackHistory?: boolean) => void;
   prependElement: (element: CanvasElement) => void;
   updateElement: (id: string, patch: Partial<CanvasElement>, trackHistory?: boolean) => void;
-  deleteElement: (id: string) => void;
+  replaceElement: (id: string, replacement: CanvasElement, trackHistory?: boolean) => void;
+  deleteElement: (id: string, trackHistory?: boolean) => void;
   deleteSelectedElements: () => void;
   clearCanvas: () => void;
   duplicateSelectedElements: () => void;
@@ -126,7 +160,11 @@ interface EditorStore extends EditorDocument, EditorSettings {
 }
 
 function persistSettings(settings: EditorSettings) {
-  localStorage.setItem(settingsKey, JSON.stringify(settings));
+  try {
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+  } catch {
+    // Storage can be unavailable or full; keep the current session state usable.
+  }
 }
 
 // ponytail: dragging the native color input commits intermediate hexes here; dedupe + cap keeps it self-cleaning. Debounce on commit if it ever feels noisy.
@@ -152,6 +190,10 @@ function pickSettings(state: EditorSettings): EditorSettings {
     textAlign: state.textAlign,
     rightClickEraser: state.rightClickEraser,
     strokeDash: state.strokeDash,
+    lineHead: state.lineHead,
+    theme: state.theme,
+    customThemePrimary: state.customThemePrimary,
+    customThemeOverrides: state.customThemeOverrides,
     shortcuts: state.shortcuts,
   };
 }
@@ -201,6 +243,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       persistSettings({ ...pickSettings(state), tool });
       return { tool };
     }),
+  setBackgroundMode: (backgroundMode) =>
+    set({ backgroundMode, updatedAt: Date.now(), saveStatus: 'dirty' }),
   setStrokeColor: (strokeColor) =>
     set((state) => {
       const recentColors = pushRecent(state.recentColors, strokeColor);
@@ -273,6 +317,38 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       persistSettings({ ...pickSettings(state), strokeDash });
       return { strokeDash };
     }),
+  setLineHead: (lineHead) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), lineHead });
+      return { lineHead };
+    }),
+  setTheme: (theme) =>
+    set((state) => {
+      persistSettings({ ...pickSettings(state), theme });
+      return { theme };
+    }),
+  setCustomThemePrimary: (customThemePrimary) => {
+    if (!isHexColor(customThemePrimary)) return;
+    set((state) => {
+      persistSettings({ ...pickSettings(state), customThemePrimary });
+      return { customThemePrimary };
+    });
+  },
+  setCustomThemeOverride: (key, color) =>
+    set((state) => {
+      const customThemeOverrides = { ...state.customThemeOverrides };
+      if (color === null) delete customThemeOverrides[key];
+      else if (isHexColor(color)) customThemeOverrides[key] = color;
+      persistSettings({ ...pickSettings(state), customThemeOverrides });
+      return { customThemeOverrides };
+    }),
+  resetCustomTheme: () =>
+    set((state) => {
+      const customThemePrimary = DEFAULT_CUSTOM_PRIMARY;
+      const customThemeOverrides = {};
+      persistSettings({ ...pickSettings(state), customThemePrimary, customThemeOverrides });
+      return { customThemePrimary, customThemeOverrides };
+    }),
   setShortcut: (tool, key) =>
     set((state) => {
       const normalized = key.trim().toLowerCase();
@@ -296,7 +372,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ),
     ),
 
-  addElement: (element) => set((state) => ({ ...withHistory(state), elements: [...state.elements, element] })),
+  addElement: (element, trackHistory = true) =>
+    set((state) => ({
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
+      elements: [...state.elements, element],
+    })),
   prependElement: (element) => set((state) => ({ ...withHistory(state), elements: [element, ...state.elements] })),
   updateElement: (id, patch, trackHistory = true) =>
     set((state) => ({
@@ -305,9 +385,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         element.id === id ? ({ ...element, ...patch } as CanvasElement) : element,
       ),
     })),
-  deleteElement: (id) =>
+  replaceElement: (id, replacement, trackHistory = true) =>
     set((state) => ({
-      ...withHistory(state),
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
+      elements: state.elements.map((element) => element.id === id ? replacement : element),
+    })),
+  deleteElement: (id, trackHistory = true) =>
+    set((state) => ({
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
       elements: state.elements.filter((element) => element.id !== id),
       ...selection(state.selectedElementIds.filter((selectedId) => selectedId !== id)),
     })),
@@ -453,6 +538,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       localStorage.setItem(lastProjectKey, project.id);
       return {
       ...project,
+      backgroundMode: normalizeBackgroundMode((project as Partial<SavedProject>).backgroundMode),
       activeLayerId: project.layers[0]?.id ?? defaultLayerId,
       ...selection([]),
       history: [],
@@ -469,6 +555,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       height: state.height,
       layers: state.layers,
       elements: state.elements,
+      backgroundMode: state.backgroundMode,
       createdAt: state.createdAt,
       updatedAt: Date.now(),
     };

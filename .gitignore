@@ -2,3 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 work/*.log
+.worktrees/
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

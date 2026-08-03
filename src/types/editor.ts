@@ -29,6 +29,8 @@ export interface Point {
 }
 
 export type StrokeDash = 'solid' | 'dashed' | 'dotted';
+export type LineHead = 'none' | 'end' | 'start' | 'both';
+export type BackgroundMode = 'normal' | 'transparent' | 'greenScreen';
 
 export interface BaseElement {
   id: string;
@@ -60,6 +62,8 @@ export interface ArrowElement extends BaseElement {
   points: number[];
   pointerLength: number;
   pointerWidth: number;
+  pointerAtBeginning?: boolean;
+  pointerAtEnding?: boolean;
 }
 
 export interface RectElement extends BaseElement {
@@ -78,6 +82,7 @@ export interface TextElement extends BaseElement {
   type: 'text';
   text: string;
   width: number;
+  height?: number;
   fontSize: number;
   fontFamily: string;
   fontStyle?: string;
@@ -113,8 +118,16 @@ export interface ImageElement extends BaseElement {
   src: string;
   width: number;
   height: number;
+  /** Non-destructive, normalized destination-out strokes applied at render time. */
+  erasures?: ImageEraseStroke[];
   /** Flood-fill raster: non-interactive background paint, excluded from selection */
   isFill?: boolean;
+}
+
+export interface ImageEraseStroke {
+  points: Array<{ x: number; y: number }>;
+  /** Brush diameter normalized against the shorter image edge. */
+  size: number;
 }
 
 export interface PolygonElement extends BaseElement {
@@ -163,11 +176,23 @@ export interface EditorDocument {
   height: number;
   layers: Layer[];
   elements: CanvasElement[];
+  backgroundMode: BackgroundMode;
   createdAt: number;
   updatedAt: number;
 }
 
 export type SavedProject = EditorDocument;
+
+export type ThemeId = 'warm' | 'light' | 'dark' | 'custom';
+export type ThemeColorKey = 'paper' | 'panel' | 'ink' | 'line' | 'accent' | 'coral' | 'canvas';
+export type ThemePalette = Record<ThemeColorKey, string>;
+export type CustomThemeOverrides = Partial<Record<ThemeColorKey, string>>;
+
+export interface ThemeSettings {
+  theme: ThemeId;
+  customThemePrimary: string;
+  customThemeOverrides: CustomThemeOverrides;
+}
 
 export interface EditorSettings {
   tool: Tool;
@@ -187,4 +212,8 @@ export interface EditorSettings {
   rightClickEraser: boolean;
   shortcuts: Record<string, Tool>;
   strokeDash: StrokeDash;
+  lineHead: LineHead;
+  theme: ThemeId;
+  customThemePrimary: string;
+  customThemeOverrides: CustomThemeOverrides;
 }

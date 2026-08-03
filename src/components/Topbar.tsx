@@ -1,11 +1,14 @@
 import type Konva from 'konva';
 import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalSpaceBetween, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Download, FileUp, Grid2X2, ImagePlus, Redo2, Save, Settings, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { BackgroundMenu } from './BackgroundMenu';
 import { ColorPicker } from './ColorPicker';
 import { useEditorStore } from '../store/useEditorStore';
 import { dataUrlToImageSize, fileToDataUrl } from '../utils/clipboardUtils';
 import { downloadDataUrl, downloadJson, downloadPdfFromDataUrl, downloadSvg, readJsonFile } from '../utils/exportUtils';
 import { DASH_MAP, getElementBounds } from '../utils/elementUtils';
+import { CANVAS_BACKGROUND_ID, getExportBackground, withTemporaryBackground } from '../utils/backgroundUtils';
 import type { CanvasElement, ImageElement, StrokeDash } from '../types/editor';
 import { isStickyLike } from '../types/editor';
 
@@ -19,7 +22,11 @@ interface TopbarProps {
 export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
-  const exportRef = useRef<HTMLDetailsElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportMenuPosition, setExportMenuPosition] = useState({ left: 0, top: 0 });
   const state = useEditorStore();
 
   const activeLayer = state.layers.find((l) => l.id === state.activeLayerId);
@@ -29,19 +36,53 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     const idSet = new Set(state.selectedElementIds);
     return state.elements.filter((e) => idSet.has(e.id));
   }, [state.elements, state.selectedElementIds]);
+  const selectedText = selectedEls.find((element) => element.type === 'text');
   const isSelectedText = selectedEls.some((e) => e.type === 'text');
   const showTextControls = state.tool === 'text' || isSelectedText;
   const hasSelection = selectedEls.length > 0;
+  const textFontSize = selectedText?.fontSize ?? state.fontSize;
+  const textFontFamily = selectedText?.fontFamily ?? state.fontFamily;
+  const textBold = selectedText ? selectedText.fontStyle?.includes('bold') ?? false : state.bold;
+  const textItalic = selectedText ? selectedText.fontStyle?.includes('italic') ?? false : state.italic;
+  const textAlign = selectedText?.align ?? state.textAlign;
 
   useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
-        exportRef.current.open = false;
+    if (!exportOpen) return;
+
+    const positionMenu = () => {
+      const rect = exportButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = exportMenuRef.current?.offsetWidth || 176;
+      setExportMenuPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+        top: rect.bottom + 4,
+      });
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportOpen(false);
+    };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        exportRef.current
+        && !exportRef.current.contains(target)
+        && !exportMenuRef.current?.contains(target)
+      ) {
+        setExportOpen(false);
       }
     };
-    window.addEventListener('mousedown', onMouseDown);
-    return () => window.removeEventListener('mousedown', onMouseDown);
-  }, []);
+    positionMenu();
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('pointerdown', closeOnOutsidePointer);
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('pointerdown', closeOnOutsidePointer);
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [exportOpen]);
 
   function handleStrokeChange(color: string) {
     state.setStrokeColor(color);
@@ -71,20 +112,27 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
       .forEach((el) => state.updateElement(el.id, { fontFamily: family } as Partial<CanvasElement>));
   }
 
-  function handleBold(bold: boolean) {
+  function handleBold(bold: boolean, italic = state.italic) {
     state.setBold(bold);
-    const style = `${state.italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`;
+    const style = `${italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`.trim();
     selectedEls
       .filter((e) => e.type === 'text')
       .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
   }
 
-  function handleItalic(italic: boolean) {
+  function handleItalic(italic: boolean, bold = state.bold) {
     state.setItalic(italic);
-    const style = `${italic ? 'italic ' : ''}${state.bold ? 'bold' : 'normal'}`;
+    const style = `${italic ? 'italic ' : ''}${bold ? 'bold' : 'normal'}`.trim();
     selectedEls
       .filter((e) => e.type === 'text')
       .forEach((el) => state.updateElement(el.id, { fontStyle: style } as Partial<CanvasElement>));
+  }
+
+  function handleTextAlign(align: 'left' | 'center' | 'right') {
+    state.setTextAlign(align);
+    selectedEls
+      .filter((element) => element.type === 'text')
+      .forEach((element) => state.updateElement(element.id, { align } as Partial<CanvasElement>));
   }
 
   function handleOpacity(opacity: number) {
@@ -148,8 +196,21 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
     updates.forEach(([id, patch], i) => state.updateElement(id, patch, i === 0));
   }
 
+  function captureStage(
+    mimeType: 'image/png' | 'image/jpeg',
+    pixelRatio: number,
+    quality: number,
+    forceTransparent = false,
+  ) {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const background = stage.findOne(`#${CANVAS_BACKGROUND_ID}`);
+    const fill = getExportBackground(state.backgroundMode, mimeType, forceTransparent);
+    return withTemporaryBackground(background, fill, () => stage.toDataURL({ pixelRatio, mimeType, quality }));
+  }
+
   function exportSvg() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+    const dataUrl = captureStage('image/png', 2, 1);
     if (dataUrl) {
       const name = state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint';
       downloadSvg(dataUrl, state.width, state.height, `${name}.svg`);
@@ -158,47 +219,50 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
   async function uploadImage(file: File | undefined) {
     if (!file || !canAddImage) return;
-    const src = await fileToDataUrl(file);
-    const size = await dataUrlToImageSize(src);
-    const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
-    const element: ImageElement = {
-      id: crypto.randomUUID(),
-      layerId: state.activeLayerId,
-      type: 'image',
-      src,
-      x: 160,
-      y: 120,
-      width: Math.round(size.width * ratio),
-      height: Math.round(size.height * ratio),
-      stroke: '#00000000',
-      fill: '#00000000',
-      strokeWidth: 0,
-    };
-    state.addElement(element);
-    state.setSelectedElementId(element.id);
+    try {
+      const src = await fileToDataUrl(file);
+      const size = await dataUrlToImageSize(src);
+      const ratio = Math.min(1, 520 / Math.max(size.width, size.height));
+      const element: ImageElement = {
+        id: crypto.randomUUID(),
+        layerId: state.activeLayerId,
+        type: 'image',
+        src,
+        x: 160,
+        y: 120,
+        width: Math.round(size.width * ratio),
+        height: Math.round(size.height * ratio),
+        stroke: '#00000000',
+        fill: '#00000000',
+        strokeWidth: 0,
+      };
+      state.addElement(element);
+      state.setSelectedElementId(element.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import image.');
+    }
   }
 
   async function importJson(file: File | undefined) {
     if (!file) return;
-    const project = await readJsonFile(file);
-    state.loadProject(project);
-    await state.saveCurrentProject();
+    try {
+      const project = await readJsonFile(file);
+      state.loadProject(project);
+      await state.saveCurrentProject();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to import project.');
+    }
   }
 
   function exportImage(mimeType: 'image/png' | 'image/jpeg', transparent = false) {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const bgRect = stage.findOne('Rect');
-    const oldFill = bgRect?.attrs.fill;
-    if (transparent) bgRect?.setAttr('fill', '#00000000');
-    const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType, quality: 0.92 });
-    if (transparent) bgRect?.setAttr('fill', oldFill);
+    const dataUrl = captureStage(mimeType, 3, 0.92, transparent);
+    if (!dataUrl) return;
     const ext = mimeType === 'image/png' ? 'png' : 'jpg';
     downloadDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}@3x.${ext}`);
   }
 
   function exportPdf() {
-    const dataUrl = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
+    const dataUrl = captureStage('image/jpeg', 2, 0.9);
     if (dataUrl) downloadPdfFromDataUrl(dataUrl, `${state.name.replace(/\s+/g, '-').toLowerCase() || 'mind-paint'}.pdf`);
   }
 
@@ -209,8 +273,11 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
   }
 
   function runExport(action: () => void) {
-    action();
-    if (exportRef.current) exportRef.current.open = false;
+    try {
+      action();
+    } finally {
+      setExportOpen(false);
+    }
   }
 
   const selOpacity = selectedEls[0]?.opacity ?? 1;
@@ -221,15 +288,15 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
   const exportItems = [
     { label: 'PNG @3x', action: () => exportImage('image/png') },
-    { label: 'PNG transparent', action: () => exportImage('image/png', true) },
+    { label: 'Transparent PNG', action: () => exportImage('image/png', true) },
     { label: 'JPEG @3x', action: () => exportImage('image/jpeg') },
-    { label: 'PDF', action: exportPdf },
     { label: 'SVG', action: exportSvg },
-    { label: 'JSON', action: () => downloadJson(state.toProject()) },
+    { label: 'PDF', action: exportPdf },
+    { label: 'Project JSON', action: () => downloadJson(state.toProject()) },
   ];
 
   return (
-    <header className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-2 shadow-[0_1px_0_rgba(255,255,255,0.75)]">
+    <header className="theme-divider-shadow flex shrink-0 flex-col gap-1.5 border-b border-line bg-panel px-4 py-2">
 
       {/* Row 1 — drawing controls */}
       <div className="flex flex-wrap items-center gap-2">
@@ -243,9 +310,9 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
 
         <div className="flex items-center gap-2">
           <ColorPicker label="Stroke" value={state.strokeColor} recent={state.recentColors} onChange={handleStrokeChange} />
-          <ColorPicker label="Fill" value={state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
+          <ColorPicker label="Fill" value={selectedText?.fill ?? state.fillColor} recent={state.recentColors} onChange={handleFillChange} />
           {hasSelection && (
-            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
+            <span className="rounded border border-accent/30 bg-paper px-1.5 py-0.5 text-[10px] font-medium text-accent">→ sel</span>
           )}
         </div>
         <div className="h-5 w-px bg-line" />
@@ -255,7 +322,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
             <select
               aria-label="Font family"
               className="rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-              value={state.fontFamily}
+              value={textFontFamily}
               onChange={(e) => handleFontFamily(e.target.value)}
             >
               <option value="Inter, sans-serif">Inter</option>
@@ -267,19 +334,41 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
               aria-label="Font size"
               className="w-16 rounded-md border border-line bg-paper px-2 py-1.5 text-xs outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
               type="number" min="10" max="96" step="2"
-              value={state.fontSize}
+              value={textFontSize}
               onChange={(e) => handleFontSize(Number(e.target.value))}
             />
             <button
-              aria-label="Bold" aria-pressed={state.bold} title="Bold"
-              className={`icon-button h-8 w-8 font-bold ${state.bold ? 'border-accent bg-accent/10 text-accent' : ''}`}
-              onClick={() => handleBold(!state.bold)}
+              aria-label="Bold" aria-pressed={textBold} title="Bold"
+              className={`icon-button h-8 w-8 font-bold ${textBold ? 'border-accent bg-paper text-accent' : ''}`}
+              onClick={() => handleBold(!textBold, textItalic)}
             >B</button>
             <button
-              aria-label="Italic" aria-pressed={state.italic} title="Italic"
-              className={`icon-button h-8 w-8 italic ${state.italic ? 'border-accent bg-accent/10 text-accent' : ''}`}
-              onClick={() => handleItalic(!state.italic)}
+              aria-label="Italic" aria-pressed={textItalic} title="Italic"
+              className={`icon-button h-8 w-8 italic ${textItalic ? 'border-accent bg-paper text-accent' : ''}`}
+              onClick={() => handleItalic(!textItalic, textBold)}
             >I</button>
+            <div className="flex items-center gap-0.5 rounded-md border border-line bg-paper p-0.5">
+              {(['left', 'center', 'right'] as const).map((align) => (
+                <button
+                  key={align}
+                  aria-label={`Text align ${align}`}
+                  aria-pressed={textAlign === align}
+                  title={`Text align ${align}`}
+                  className={`icon-button h-7 w-7 border-transparent ${
+                    textAlign === align ? 'bg-paper text-accent' : ''
+                  }`}
+                  onClick={() => handleTextAlign(align)}
+                >
+                  {align === 'left' ? (
+                    <AlignLeft size={14} />
+                  ) : align === 'center' ? (
+                    <AlignCenter size={14} />
+                  ) : (
+                    <AlignRight size={14} />
+                  )}
+                </button>
+              ))}
+            </div>
           </>
         ) : state.tool === 'fill' ? (
           <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-ink">
@@ -334,7 +423,7 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
           <div className="flex items-center gap-0.5 rounded border border-line bg-paper p-0.5">
             {(['solid', 'dashed', 'dotted'] as const).map((d) => (
               <button key={d} title={d} aria-pressed={activeDash === d}
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-panel' : 'text-ink hover:bg-accent/10'}`}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${activeDash === d ? 'bg-accent text-panel' : 'text-ink hover:bg-panel'}`}
                 onClick={() => handleDash(d)}
               >
                 {d === 'solid' ? '—' : d === 'dashed' ? '╌' : '···'}
@@ -398,19 +487,42 @@ export function Topbar({ stageRef, onOpenSettings }: TopbarProps) {
         <button className="icon-button h-8 w-8 hover:border-coral hover:bg-coral/10 hover:text-coral" title="Clear canvas" aria-label="Clear canvas" onClick={clearCanvas}>
           <Trash2 size={15} />
         </button>
+        <BackgroundMenu value={state.backgroundMode} onChange={state.setBackgroundMode} />
         <div className="mx-1 h-5 w-px bg-line" />
-        <details ref={exportRef} className="relative">
-          <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent">
-            <Download size={14} /> Export
-          </summary>
-          <div className="absolute left-0 top-full z-50 mt-1 min-w-max overflow-hidden rounded-md border border-line bg-panel shadow-soft">
-            {exportItems.map(({ label, action }) => (
-              <button key={label} className="block w-full px-4 py-2 text-left text-sm hover:bg-accent/10" onClick={() => runExport(action)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </details>
+        <div ref={exportRef} className="relative">
+          <button
+            ref={exportButtonRef}
+            aria-label="Export"
+            aria-controls="export-formats-menu"
+            aria-expanded={exportOpen}
+            aria-haspopup="menu"
+            className="flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent"
+            onClick={() => setExportOpen((open) => !open)}
+          >
+            <Download size={14} /> Export <ChevronDown size={12} />
+          </button>
+          {exportOpen && createPortal(
+            <div
+              ref={exportMenuRef}
+              id="export-formats-menu"
+              role="menu"
+              aria-label="Export formats"
+              className="fixed z-[100] min-w-44 overflow-hidden rounded-md border border-line bg-panel py-1 shadow-soft"
+              style={exportMenuPosition}
+            >
+              {exportItems.map(({ label, action }) => (
+                <button
+                  key={label}
+                  role="menuitem"
+                  className="block w-full px-4 py-2 text-left text-sm hover:bg-paper"
+                  onClick={() => runExport(action)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          , document.body)}
+        </div>
         <button className="icon-button h-8 w-8" title="Import JSON" aria-label="Import JSON" onClick={() => jsonInputRef.current?.click()}>
           <FileUp size={15} />
         </button>
