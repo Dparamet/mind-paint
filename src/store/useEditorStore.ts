@@ -132,10 +132,11 @@ interface EditorStore extends EditorDocument, EditorSettings {
   setSelectedElementId: (id: string | null) => void;
   setSelectedElementIds: (ids: string[]) => void;
   toggleSelectedElementId: (id: string) => void;
-  addElement: (element: CanvasElement) => void;
+  addElement: (element: CanvasElement, trackHistory?: boolean) => void;
   prependElement: (element: CanvasElement) => void;
   updateElement: (id: string, patch: Partial<CanvasElement>, trackHistory?: boolean) => void;
-  deleteElement: (id: string) => void;
+  replaceElement: (id: string, replacement: CanvasElement, trackHistory?: boolean) => void;
+  deleteElement: (id: string, trackHistory?: boolean) => void;
   deleteSelectedElements: () => void;
   clearCanvas: () => void;
   duplicateSelectedElements: () => void;
@@ -371,7 +372,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ),
     ),
 
-  addElement: (element) => set((state) => ({ ...withHistory(state), elements: [...state.elements, element] })),
+  addElement: (element, trackHistory = true) =>
+    set((state) => ({
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
+      elements: [...state.elements, element],
+    })),
   prependElement: (element) => set((state) => ({ ...withHistory(state), elements: [element, ...state.elements] })),
   updateElement: (id, patch, trackHistory = true) =>
     set((state) => ({
@@ -380,9 +385,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         element.id === id ? ({ ...element, ...patch } as CanvasElement) : element,
       ),
     })),
-  deleteElement: (id) =>
+  replaceElement: (id, replacement, trackHistory = true) =>
     set((state) => ({
-      ...withHistory(state),
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
+      elements: state.elements.map((element) => element.id === id ? replacement : element),
+    })),
+  deleteElement: (id, trackHistory = true) =>
+    set((state) => ({
+      ...(trackHistory ? withHistory(state) : { updatedAt: Date.now(), saveStatus: 'dirty' as SaveStatus }),
       elements: state.elements.filter((element) => element.id !== id),
       ...selection(state.selectedElementIds.filter((selectedId) => selectedId !== id)),
     })),
