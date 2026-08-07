@@ -1,169 +1,218 @@
-# Mind Paint
+# 🎨 Mind Paint
 
-Local-first drawing and thinking board built with React, Vite, TypeScript, TailwindCSS, React-Konva, Zustand, and native IndexedDB.
+> **A local-first drawing & thinking board**
+> Built with React, Vite, TypeScript, TailwindCSS, React-Konva, Zustand, and native IndexedDB
 
-## Features
+---
 
-### Drawing Tools
-| Tool | Shortcut | Notes |
-|------|----------|-------|
-| Select / Move | `V` | Click, Shift+click multi-select, drag marquee to box-select |
-| Lasso | `L` | Freehand polygon select — draw any shape to select elements within it |
-| Pen | `P` | Smooth freehand stroke |
-| Pencil | — | Lighter freehand stroke |
-| Eraser | `E` | Deletes elements under cursor |
-| Fill bucket | `F` | Flood-fill on canvas pixels |
-| Rectangle | `R` | Drag any direction — no negative-size bug |
-| Circle / Ellipse | `C` | |
-| Line styles | `A` | One dropdown for plain, start-arrow, end-arrow, and double-arrow lines; solid, dashed, or dotted strokes |
-| Shapes dropdown | — | Rectangle, Circle/Ellipse, Triangle, Diamond, Pentagon, Hexagon, Octagon, Star |
-| Text | `T` | Click to place; inline editor (`Enter` commit, `Shift+Enter` newline, `Esc` cancel) |
-| Sticky note | — | Double-click to edit inline; Enter commits, Esc cancels (blank sticky auto-deletes on Esc) |
-| Mind node | — | Double-click to edit inline |
-| Speech bubble | — | Double-click to edit inline |
+## ✨ Overview
 
-### Canvas
-- **Infinite canvas** — pan with Space+drag or middle mouse, zoom with scroll wheel (15 %–400 %)
-- **Marquee select** — drag on empty canvas to box-select multiple elements
-- **Lasso select** — press `L` and draw a freehand shape to select elements partially or fully inside it
-- **Snap to grid** — optional 24 px grid with snap toggle
-- **Zoom slider** — top-left HUD with reset and fit-to-screen buttons
-- **Alt+drag** to duplicate any element in place
-- **Paste image** from clipboard
+**Mind Paint** is a fast, lightweight, and offline-first canvas designed for visual thinking, brainstorming, and sketching.
+It provides a smooth, flexible drawing experience without requiring any backend.
 
-### Styling
-- **Stroke & Fill** color pickers — click swatch to open popover: 12 preset colors, auto-tracked recent-color history (last 12, deduplicated, persisted), and a custom native picker
-- **Opacity slider** — shown when element(s) selected (10 %–100 %)
-- **Stroke dash** — solid `—`, dashed `╌`, dotted `···` — applies to new and selected elements
-- **Line endpoints** — none, start, end, or both — applies to new and selected line elements
-- **Brush size** slider (1–48)
-- **Text controls** — font family, size, bold, italic (context-aware, shown for text tool or selected text)
-- **Sticky color presets** — per-sticky background color swatches shown in Topbar when sticky/mindNode/speech selected
+---
 
-### Selection & Transform
-- Multi-select with Shift+click, marquee drag, or lasso
-- Resize + rotate via Konva Transformer handles
-- **Z-order** — Bring to Front / Forward / Backward / Send to Back (shown in toolbar when 1 element selected)
-- **Align & Distribute** — shown when ≥ 2 elements selected: align left / center / right / top / middle / bottom; distribute H/V (≥ 3 elements)
-- **Properties panel** — live X, Y, W, H, Rotation, Stroke-Width inputs in right sidebar when element selected
+## 🚀 Features
 
-### Layers
-- Add, rename, delete, reorder (up/down), toggle visibility, lock/unlock
+### ✏️ Drawing Tools
 
-### Projects
-- Auto-save debounced 3 s to native IndexedDB
-- Manual save `Ctrl+S` equivalent via Save button
-- Multiple projects with create / load / delete in Project Manager
-- Last session auto-restored on open
+| Tool             | Shortcut | Description                                                       |
+| ---------------- | -------- | ----------------------------------------------------------------- |
+| Select / Move    | `V`      | Click to select, Shift+click for multi-select, drag to box-select |
+| Lasso            | `L`      | Freehand selection                                                |
+| Pen              | `P`      | Smooth freehand stroke                                            |
+| Pencil           | —        | Lightweight natural stroke                                        |
+| Eraser           | `E`      | Remove elements                                                   |
+| Fill Bucket      | `F`      | Flood-fill canvas                                                 |
+| Rectangle        | `R`      | Draw rectangles in any direction                                  |
+| Circle / Ellipse | `C`      | Draw circles or ellipses                                          |
+| Line Styles      | `A`      | Arrow styles, dashed, dotted                                      |
+| Shapes           | —        | Triangle, diamond, star, etc.                                     |
+| Text             | `T`      | Inline editable text                                              |
+| Sticky Note      | —        | Editable notes                                                    |
+| Mind Node        | —        | Nodes for mind mapping                                            |
+| Speech Bubble    | —        | Annotation bubbles                                                |
 
-### Export & Import
-| Format | Notes |
-|--------|-------|
-| PNG @3x | |
-| Transparent PNG | |
-| JPEG @3x | |
-| PDF | Basic single-page |
-| SVG | Raster-in-SVG wrapper |
-| Project JSON | Full project round-trip |
-| Import JSON | Validated `.json` project, maximum 25 MB |
-| Import image | PNG/JPEG/WebP/GIF from file or Ctrl+V paste, maximum 10 MB |
+---
 
-### Keyboard Shortcuts
-| Keys | Action |
-|------|--------|
-| `Ctrl+Z` | Undo (40-step) |
-| `Ctrl+Y` | Redo |
-| `Ctrl+C` | Copy selected |
-| `Ctrl+V` | Paste (elements or image from clipboard) |
-| `Ctrl+D` | Duplicate selected |
-| `Delete` / `Backspace` | Delete selected |
-| `Space+drag` | Pan canvas |
-| `Middle drag` | Pan canvas |
-| `Scroll` | Zoom |
-| `Alt+drag` | Drag-duplicate element |
-| `V P E R C T F A L` | Tool shortcuts (customisable in Settings) |
-| Right-click drag | Quick eraser |
+### 🧭 Canvas
 
-## Run
+* Infinite canvas with smooth navigation
+* Pan: `Space + drag` or middle mouse
+* Zoom: scroll (15% – 400%)
+* Marquee & lasso selection
+* Optional snap-to-grid (24px)
+* Duplicate: `Alt + drag`
+* Paste images directly from clipboard
+
+---
+
+### 🎨 Styling
+
+* Color picker with recent history (last 12 colors)
+* Opacity control (10% – 100%)
+* Stroke styles: solid, dashed, dotted
+* Line endpoints: none, start, end, both
+* Brush size (1–48)
+* Text formatting (font, size, bold, italic)
+* Sticky note color presets
+
+---
+
+### 🔧 Selection & Transform
+
+* Multi-select via Shift, drag, or lasso
+* Resize & rotate (Konva Transformer)
+* Z-order controls (front/back)
+* Align & distribute tools
+* Properties panel (X, Y, Width, Height, Rotation)
+
+---
+
+### 🗂️ Layers
+
+* Create, rename, delete
+* Reorder layers
+* Lock / hide elements
+
+---
+
+### 📁 Projects
+
+* Auto-save every 3 seconds (IndexedDB)
+* Manual save (`Ctrl+S`)
+* Project Manager (create, load, delete)
+* Automatic session restore
+
+---
+
+### 📤 Export & Import
+
+| Format          | Notes                        |
+| --------------- | ---------------------------- |
+| PNG @3x         | High quality                 |
+| Transparent PNG | No background                |
+| JPEG @3x        |                              |
+| PDF             | Single page                  |
+| SVG             | Raster wrapper               |
+| JSON            | Full project data            |
+| Import JSON     | Up to 25MB                   |
+| Import Image    | PNG/JPEG/WebP/GIF up to 10MB |
+
+---
+
+### ⌨️ Keyboard Shortcuts
+
+| Key               | Action            |
+| ----------------- | ----------------- |
+| Ctrl+Z / Ctrl+Y   | Undo / Redo       |
+| Ctrl+C / Ctrl+V   | Copy / Paste      |
+| Ctrl+D            | Duplicate         |
+| Delete            | Remove selected   |
+| Space + Drag      | Pan               |
+| Scroll            | Zoom              |
+| Alt + Drag        | Duplicate element |
+| V P E R C T F A L | Tool shortcuts    |
+
+---
+
+## 🛠️ Setup
+
+### Install
 
 ```bash
 npm install
+```
+
+### Run (Development)
+
+```bash
 npm run dev
 ```
 
-## Build
+### Build
 
 ```bash
 npm run build
 ```
 
-## Test
+### Test
 
 ```bash
 npm test
 ```
 
-Covers store actions, IndexedDB ordering/compatibility, project and image import validation, canvas/text placement, background modes, image masking, export helpers, geometry bounds, lasso selection, line styles, toolbar accessibility, and type guards. 119 tests total.
+> ✅ Includes 119 tests covering state management, IndexedDB, import/export validation, geometry, lasso selection, and UI behavior.
 
-## Storage
+---
 
-- **Native IndexedDB** — project data; adapter preserves the previous Dexie database/store schema
-- **localStorage** — editor settings only (tool, colors, recent colors, brush size, shortcuts, grid prefs, stroke dash, line endpoints)
-- No backend required
+## 💾 Storage
 
-## Security
+* **IndexedDB** → Project data
+* **localStorage** → Editor settings
+* ❌ No backend required
 
-- Project JSON imports are validated at the boundary: schema, element kinds, dimensions, layer references, duplicate IDs, collection limits, and local image data URLs
-- Project imports are limited to 25 MB; image upload/paste accepts PNG, JPEG, WebP, or GIF up to 10 MB
-- CSP restricts scripts, images, connections, workers, forms, and embedded objects; Vercel deployments also receive HSTS, clickjacking, MIME-sniffing, referrer, and permissions headers
-- The service worker caches same-origin successful GET responses only and uses the app-shell fallback only for navigation requests
-- Local secret files and private key formats are excluded by `.gitignore`
-- Release check: `npm audit --audit-level=high`
+---
 
-## Architecture
+## 🔒 Security
+
+* Strict validation for all imported JSON files
+* File size limits (JSON ≤ 25MB, Images ≤ 10MB)
+* Content Security Policy (CSP) enabled
+* Secure headers on Vercel deployments
+* Service worker caches only safe requests
+* Sensitive files excluded via `.gitignore`
+* Security audit: `npm audit --audit-level=high`
+
+---
+
+## 🧱 Architecture
 
 ```
 src/
-  App.tsx                  — shell, keyboard shortcuts, autosave, session recovery
-  components/
-    CanvasStage.tsx        — Konva stage, all drawing/selection/zoom/pan logic
-    Toolbar.tsx            — left tool picker (4 groups: Selection, Draw, Shape, Annotate)
-    Topbar.tsx             — color, style, text, z-order, align/distribute, export controls
-    LayerPanel.tsx         — layer management
-    ProjectManager.tsx     — project CRUD
-    PropertiesPanel.tsx    — live X/Y/W/H/rotation/strokeWidth inputs
-    ColorPicker.tsx        — stroke/fill swatch + popover with presets + recent history
-    SettingsPanel.tsx      — shortcuts + grid settings
-  store/
-    useEditorStore.ts      — Zustand store: state, history, settings, layer/element/project actions
-  db/
-    indexedDb.ts           — native IndexedDB adapter (Dexie-schema compatible)
-  types/
-    editor.ts              — CanvasElement union, EditorSettings, Layer, StrokeDash, LineHead, isStickyLike
-  utils/
-    elementUtils.ts        — bounds, dash/line-head mappings, lasso geometry
-    exportUtils.ts         — PNG/JPEG/PDF/SVG/JSON helpers + project validation
-    clipboardUtils.ts      — validated image paste / file-to-dataURL helpers
-  test/
-    elementUtils.test.ts   — bounds, zero-size guards, dash/head mappings
-    indexedDb.test.ts      — ordering + legacy database-version compatibility
-    exportUtils.test.ts    — exports + untrusted project import validation
-    clipboardUtils.test.ts — image type/size validation
-    lasso-selection.test.ts — pointInPolygon + isElementInLasso
-    sticky-typeguard.test.ts — isStickyLike type guard
+  components/      → UI, canvas, panels
+  store/           → Zustand state management
+  db/              → IndexedDB adapter
+  utils/           → geometry, export, clipboard
+  types/           → shared types
+  test/            → unit tests
 ```
 
-## Performance Notes
+---
 
-- **Lasso & marquee drag at 60 fps** — imperative Konva refs + `batchDraw()` bypass React reconciler entirely during drag; no `setState` per frame
-- `EMPTY_POINTS` module-level constant keeps React-Konva `points` prop reference-stable, preventing Konva from wiping imperative updates on re-render
-- `selectedEls` in Topbar memoized with `useMemo` + `new Set(selectedElementIds)` for O(1) lookup (was O(n·m))
-- Autosave debounced 3 000 ms
-- `elementsByLayer` memoised with `useMemo`
-- History capped at 40 snapshots; identity-based duplicate-snapshot guard avoids serialization work
-- Main bundle: **187.36 kB gzip**, reduced from **220.87 kB** (−33.51 kB / 15.2%) by replacing a 96 kB-source dependency with the native IndexedDB API
-- Current production CSS: **4.60 kB gzip**
+## ⚡ Performance
 
-## Deploy
+* 60 FPS interactions (Konva + batchDraw)
+* No React re-render during drag operations
+* Optimized selection & layer rendering
+* Autosave debounced (3 seconds)
+* History capped at 40 snapshots
+* Bundle size: **187.36 kB gzip** (−15.2%)
+* CSS: **4.60 kB gzip**
 
-`vite.config.ts` uses `base: './'` for Vercel and GitHub Pages. `vercel.json` adds production security headers on Vercel; the HTML CSP remains the portable baseline on static hosts.
+---
+
+## 🚀 Deploy
+
+* Supports **Vercel** and **GitHub Pages**
+* Configured with `base: './'` for static hosting
+* Production-ready security headers
+
+---
+
+## 🎯 Philosophy
+
+> Local-first • Fast • Lightweight • No backend • Full control
+
+---
+
+## 👨‍💻 Author
+
+**Paramet D.**
+Computer Engineering Student 🇹🇭
+
+---
+
+## ⭐️ Support
+
+If you find this project useful, consider giving it a ⭐ on GitHub!
