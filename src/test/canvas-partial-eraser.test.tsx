@@ -27,7 +27,11 @@ vi.mock('react-konva', () => {
     const pointerRef = useRef({ x: 60, y: 60 });
     const stage = {
       getPointerPosition: () => pointerRef.current,
-      getIntersection: () => rectangleNode,
+      getIntersection: (position: { x: number; y: number }) => (
+        position.x >= 20 && position.x <= 120 && position.y >= 30 && position.y <= 110
+          ? rectangleNode
+          : null
+      ),
       findOne: () => rectangleNode,
     };
     useImperativeHandle(ref, () => stage);
@@ -152,6 +156,32 @@ describe('Canvas partial eraser', () => {
     render(<CanvasStage stageRef={createRef<Konva.Stage | null>()} />);
 
     fireEvent.mouseDown(screen.getByTestId('canvas-stage'), { clientX: 60, clientY: 60 });
+
+    expect(useEditorStore.getState().elements[0].type).toBe('rect');
+  });
+
+  it('erases a shape crossed between sparse pointer events', () => {
+    render(<CanvasStage stageRef={createRef<Konva.Stage | null>()} />);
+
+    const stage = screen.getByTestId('canvas-stage');
+    fireEvent.mouseDown(stage, { clientX: 0, clientY: 60 });
+    fireEvent.mouseMove(stage, { clientX: 140, clientY: 60 });
+    fireEvent.mouseUp(stage, { clientX: 140, clientY: 60 });
+
+    expect(useEditorStore.getState().elements[0]).toEqual(expect.objectContaining({
+      id: 'rect-erase',
+      type: 'image',
+    }));
+  });
+
+  it('does not interpolate across separate erase gestures', () => {
+    render(<CanvasStage stageRef={createRef<Konva.Stage | null>()} />);
+
+    const stage = screen.getByTestId('canvas-stage');
+    fireEvent.mouseDown(stage, { clientX: 0, clientY: 60 });
+    fireEvent.mouseUp(stage, { clientX: 0, clientY: 60 });
+    fireEvent.mouseDown(stage, { clientX: 140, clientY: 60 });
+    fireEvent.mouseUp(stage, { clientX: 140, clientY: 60 });
 
     expect(useEditorStore.getState().elements[0].type).toBe('rect');
   });

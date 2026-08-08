@@ -4,7 +4,7 @@ import { Arrow, Circle as KonvaCircle, Ellipse, Group, Image as KonvaImage, Laye
 import type Konva from 'konva';
 import { Maximize2, RotateCcw } from 'lucide-react';
 import { dataUrlToImageSize, getImageFromClipboard } from '../utils/clipboardUtils';
-import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
+import { erasePolyline, floodFillMask, removeContiguousBackground, sampleSegment } from '../utils/drawingUtils';
 import { DASH_MAP, getElementBounds, getElementsBounds, isElementInLasso, lineHeadPatch, moveElementOrigins } from '../utils/elementUtils';
 import { appendErasePoint, normalizeErasePoint, renderMaskedImage } from '../utils/imageMaskUtils';
 import { captureElementRaster, createRasterImageElement, findElementNode, worldPointToImageLocal } from '../utils/elementRasterUtils';
@@ -170,6 +170,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
   const imageEraseStrokesRef = useRef(new Map<string, number>());
   const eraseGestureHasHistoryRef = useRef(false);
   const lastEraseTargetIdRef = useRef<string | null>(null);
+  const lastEraseScreenPointRef = useRef<{ x: number; y: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   // ponytail: same refs+batchDraw pattern as lasso/marquee — mousemove mutates the
   // Konva node directly, the store gets ONE commit on mouseup (no 60fps re-renders)
@@ -460,6 +461,34 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     return trackHistory;
   }
 
+  function resetEraseGesture() {
+    imageEraseStrokesRef.current.clear();
+    eraseGestureHasHistoryRef.current = false;
+    lastEraseTargetIdRef.current = null;
+    lastEraseScreenPointRef.current = null;
+  }
+
+  function beginEraseGesture(screenPos: { x: number; y: number }) {
+    resetEraseGesture();
+    lastEraseScreenPointRef.current = screenPos;
+    eraseAtScreenPoint(screenPos);
+  }
+
+  function continueEraseGesture(screenPos: { x: number; y: number }) {
+    const previous = lastEraseScreenPointRef.current;
+    if (!previous) {
+      lastEraseScreenPointRef.current = screenPos;
+      eraseAtScreenPoint(screenPos);
+      return;
+    }
+
+    const spacing = Math.max(1, Math.min(4, brushSize / 2));
+    for (const sample of sampleSegment(previous, screenPos, spacing)) {
+      eraseAtScreenPoint(sample);
+    }
+    lastEraseScreenPointRef.current = screenPos;
+  }
+
   function eraseAtScreenPoint(screenPos: { x: number; y: number }) {
     const stage = stageRef.current;
     const worldPos = getPointer(true);
@@ -569,11 +598,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     if ('button' in event.evt && event.evt.button === 2 && rightClickEraser && canEditActiveLayer) {
       event.evt.preventDefault();
       rightEraseId.current = 'active';
-      imageEraseStrokesRef.current.clear();
-      eraseGestureHasHistoryRef.current = false;
-      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
-      if (pos) eraseAtScreenPoint(pos);
+      if (pos) beginEraseGesture(pos);
       return;
     }
 
@@ -674,11 +700,8 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (tool === 'eraser') {
       isErasingRef.current = true;
-      imageEraseStrokesRef.current.clear();
-      eraseGestureHasHistoryRef.current = false;
-      lastEraseTargetIdRef.current = null;
       const pos = stageRef.current?.getPointerPosition();
-      if (pos) eraseAtScreenPoint(pos);
+      if (pos) beginEraseGesture(pos);
       return;
     }
 
@@ -854,7 +877,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
 
     if (isErasingRef.current || rightEraseId.current) {
       const pos = stageRef.current?.getPointerPosition();
-      if (pos) eraseAtScreenPoint(pos);
+      if (pos) continueEraseGesture(pos);
       return;
     }
 
@@ -1052,9 +1075,7 @@ export function CanvasStage({ stageRef }: CanvasStageProps) {
     middlePanStart.current = null;
     drawStartRef.current = null;
     isErasingRef.current = false;
-    imageEraseStrokesRef.current.clear();
-    eraseGestureHasHistoryRef.current = false;
-    lastEraseTargetIdRef.current = null;
+    resetEraseGesture();
     setIsMiddlePanning(false);
   }
 
