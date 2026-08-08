@@ -25,6 +25,16 @@ function distanceSquared(a: Point, b: Point) {
   return dx * dx + dy * dy;
 }
 
+export function sampleSegment(start: Point, end: Point, maxSpacing: number): Point[] {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const spacing = Number.isFinite(maxSpacing) && maxSpacing > 0 ? maxSpacing : distance || 1;
+  const steps = Math.max(1, Math.ceil(distance / spacing));
+
+  return Array.from({ length: steps }, (_, index) => pointAt(start, end, (index + 1) / steps));
+}
+
 function distanceSquaredToSegment(point: Point, a: Point, b: Point) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;

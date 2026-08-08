@@ -96,7 +96,7 @@ function createDocument(): EditorDocument {
 }
 
 type Snapshot = Pick<EditorDocument, 'layers' | 'elements'>;
-type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
+export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
 
 interface EditorStore extends EditorDocument, EditorSettings {
   activeLayerId: string;

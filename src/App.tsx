@@ -1,9 +1,7 @@
 import type Konva from 'konva';
 import { useEffect, useRef, useState } from 'react';
 import { CanvasStage } from './components/CanvasStage';
-import { LayerPanel } from './components/LayerPanel';
-import { PropertiesPanel } from './components/PropertiesPanel';
-import { ProjectManager } from './components/ProjectManager';
+import { RightSidebar } from './components/RightSidebar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toolbar } from './components/Toolbar';
 import { Topbar } from './components/Topbar';
@@ -122,17 +120,7 @@ export default function App() {
         <CanvasStage stageRef={stageRef} />
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-l border-line bg-panel">
-        <PropertiesPanel />
-        <LayerPanel />
-        <ProjectManager />
-        <div className="shrink-0 border-t border-line bg-paper px-4 py-2 text-xs font-medium text-ink/70">
-          {saveStatus === 'saving' && <span className="text-accent">Saving…</span>}
-          {saveStatus === 'saved' && <span>Saved</span>}
-          {saveStatus === 'dirty' && <span className="text-coral">Unsaved changes</span>}
-          {saveStatus === 'error' && <span className="text-coral">Save failed</span>}
-        </div>
-      </div>
+      <RightSidebar saveStatus={saveStatus} />
     </ThemeRoot>
   );
 }

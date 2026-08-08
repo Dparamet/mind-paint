@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { erasePolyline, floodFillMask, removeContiguousBackground } from '../utils/drawingUtils';
+import { erasePolyline, floodFillMask, removeContiguousBackground, sampleSegment } from '../utils/drawingUtils';
+
+describe('sampleSegment', () => {
+  it('fills a fast pointer segment with bounded samples including the endpoint', () => {
+    const samples = sampleSegment({ x: 0, y: 0 }, { x: 10, y: 0 }, 4);
+
+    expect(samples).toHaveLength(3);
+    expect(samples[0]).toEqual(expect.objectContaining({ y: 0 }));
+    expect(samples[0].x).toBeCloseTo(10 / 3);
+    expect(samples[1].x).toBeCloseTo(20 / 3);
+    expect(samples[2]).toEqual({ x: 10, y: 0 });
+  });
+
+  it('returns only the endpoint for zero distance or invalid spacing', () => {
+    expect(sampleSegment({ x: 2, y: 3 }, { x: 2, y: 3 }, 0)).toEqual([{ x: 2, y: 3 }]);
+  });
+});
 
 describe('erasePolyline', () => {
   it('cuts a small section out of a stroke instead of deleting the whole line', () => {
